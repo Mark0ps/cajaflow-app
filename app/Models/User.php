@@ -2,31 +2,82 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
+// NOTA: este archivo asume que reemplazas/mergeas con tu app/Models/User.php
+// existente (el que ya usa Sanctum en AutoSys). Solo se agregan los campos
+// y relaciones nuevas de CajaFlow (role, empleado_id, activo).
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'role',
+        'empleado_id',
+        'activo',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+        'activo' => 'boolean',
+    ];
+
+    public function empleado(): BelongsTo
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
+        return $this->belongsTo(Empleado::class);
+    }
+
+    public function cierresCaja(): HasMany
+    {
+        return $this->hasMany(CierreCaja::class);
+    }
+
+    public function cierresRevisados(): HasMany
+    {
+        return $this->hasMany(CierreCaja::class, 'revisado_por');
+    }
+
+    public function gastosAgregados(): HasMany
+    {
+        return $this->hasMany(Gasto::class, 'agregado_por');
+    }
+
+    public function planillasGeneradas(): HasMany
+    {
+        return $this->hasMany(Planilla::class, 'generada_por');
+    }
+
+    public function pagosRegistrados(): HasMany
+    {
+        return $this->hasMany(PagoPlanilla::class, 'registrado_por');
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isSecretaria(): bool
+    {
+        return $this->role === 'secretaria';
+    }
+
+    public function isCajero(): bool
+    {
+        return $this->role === 'cajero';
     }
 }
