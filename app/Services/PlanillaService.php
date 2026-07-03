@@ -7,6 +7,7 @@ use App\Models\Empleado;
 use App\Models\LlegadaTarde;
 use App\Models\Planilla;
 use App\Models\PlanillaDetalle;
+use App\Models\PrestamoAbono;
 use App\Models\User;
 use App\Models\Vale;
 use Carbon\Carbon;
@@ -16,15 +17,18 @@ use Illuminate\Validation\ValidationException;
 class PlanillaService
 {
     /**
-     * Genera la planilla de una quincena, recorriendo todos los empleados
-     * activos y sumando automáticamente sus deducciones pendientes
-     * (vales, compras en tienda, llegadas tarde, abono de préstamo).
+     * Genera la planilla de una quincena para los empleados seleccionados a
+     * mano por el admin (sin default automático), sumando automáticamente
+     * sus deducciones pendientes (vales, compras en tienda, llegadas tarde,
+     * abono de préstamo).
      *
      * IMPORTANTE: esto solo calcula lo que se debe. NO paga a nadie — el
      * pago real ocurre después, vía PagoPlanillaService, y puede tardar
      * (ver estado_pago en PlanillaDetalle).
+     *
+     * @param  array<int>  $empleadoIds
      */
-    public function generar(int $anio, int $mes, int $quincena, User $generadaPor): Planilla
+    public function generar(int $anio, int $mes, int $quincena, array $empleadoIds, User $generadaPor): Planilla
     {
         if (Planilla::where('anio', $anio)->where('mes', $mes)->where('quincena', $quincena)->exists()) {
             throw ValidationException::withMessages([
@@ -34,7 +38,7 @@ class PlanillaService
 
         [$periodoInicio, $periodoFin] = $this->calcularPeriodo($anio, $mes, $quincena);
 
-        return DB::transaction(function () use ($anio, $mes, $quincena, $periodoInicio, $periodoFin, $generadaPor) {
+        return DB::transaction(function () use ($anio, $mes, $quincena, $empleadoIds, $periodoInicio, $periodoFin, $generadaPor) {
             $planilla = Planilla::create([
                 'anio' => $anio,
                 'mes' => $mes,
@@ -45,7 +49,7 @@ class PlanillaService
                 'generada_por' => $generadaPor->id,
             ]);
 
-            Empleado::where('activo', true)->each(
+            Empleado::whereIn('id', $empleadoIds)->get()->each(
                 fn (Empleado $empleado) => $this->generarDetalleEmpleado($planilla, $empleado, $periodoInicio, $periodoFin, $quincena)
             );
 
@@ -175,5 +179,116 @@ class PlanillaService
         $planilla->update(['estado' => 'cerrada', 'cerrada_en' => now()]);
 
         return $planilla;
+    }
+
+    /**
+     * Edita la lista de empleados de una planilla en borrador. A los que se
+     * agregan se les genera su planilla_detalle igual que en generar(). A
+     * los que se quitan se les revierte todo lo aplicado automáticamente
+     * (vales/compras/llegadas tarde, abono de préstamo) antes de borrar su
+     * detalle. Se rechaza si algún empleado a quitar ya tiene un pago
+     * registrado contra su detalle.
+     *
+     * @param  array<int>  $empleadoIds
+     */
+    public function actualizarEmpleados(Planilla $planilla, array $empleadoIds): Planilla
+    {
+        if ($planilla->estado !== 'borrador') {
+            throw ValidationException::withMessages([
+                'estado' => 'Solo se puede editar una planilla en borrador.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($planilla, $empleadoIds) {
+            $detallesActuales = $planilla->detalles()->with('empleado')->get()->keyBy('empleado_id');
+            $idsActuales = $detallesActuales->keys()->all();
+
+            $idsAQuitar = array_diff($idsActuales, $empleadoIds);
+            $idsAAgregar = array_diff($empleadoIds, $idsActuales);
+
+            foreach ($idsAQuitar as $empleadoId) {
+                $detalle = $detallesActuales[$empleadoId];
+
+                if ($detalle->pagosAplicados()->exists()) {
+                    throw ValidationException::withMessages([
+                        'empleado_ids' => "No se puede quitar a {$detalle->empleado->nombreCompleto()} porque ya tiene un pago registrado contra esta planilla.",
+                    ]);
+                }
+            }
+
+            foreach ($idsAQuitar as $empleadoId) {
+                $this->revertirDetalle($detallesActuales[$empleadoId]);
+            }
+
+            [$periodoInicio, $periodoFin] = $this->calcularPeriodo($planilla->anio, $planilla->mes, $planilla->quincena);
+
+            Empleado::whereIn('id', $idsAAgregar)->get()->each(
+                fn (Empleado $empleado) => $this->generarDetalleEmpleado($planilla, $empleado, $periodoInicio, $periodoFin, $planilla->quincena)
+            );
+
+            return $planilla->fresh('detalles.empleado');
+        });
+    }
+
+    /**
+     * Elimina una planilla completa en borrador, revirtiendo primero todo lo
+     * aplicado automáticamente a cada empleado (mismo mecanismo que
+     * actualizarEmpleados). Rechaza la operación si algún detalle ya tiene
+     * un pago registrado.
+     */
+    public function eliminar(Planilla $planilla): void
+    {
+        if ($planilla->estado !== 'borrador') {
+            throw ValidationException::withMessages([
+                'estado' => 'Solo se puede eliminar una planilla en borrador.',
+            ]);
+        }
+
+        DB::transaction(function () use ($planilla) {
+            $detalles = $planilla->detalles()->with('empleado')->get();
+
+            $empleadosConPago = $detalles->filter(fn (PlanillaDetalle $d) => $d->pagosAplicados()->exists());
+
+            if ($empleadosConPago->isNotEmpty()) {
+                $nombres = $empleadosConPago->map(fn (PlanillaDetalle $d) => $d->empleado->nombreCompleto())->implode(', ');
+
+                throw ValidationException::withMessages([
+                    'planilla' => "No se puede eliminar: ya hay pagos registrados para: {$nombres}.",
+                ]);
+            }
+
+            $detalles->each(fn (PlanillaDetalle $d) => $this->revertirDetalle($d));
+
+            $planilla->delete();
+        });
+    }
+
+    /**
+     * Revierte todo lo que generarDetalleEmpleado() aplicó automáticamente
+     * a un detalle (vales, compras en tienda, llegadas tarde, abono de
+     * préstamo) y luego lo borra. El llamador es responsable de verificar
+     * primero que el detalle no tenga pagos aplicados.
+     */
+    private function revertirDetalle(PlanillaDetalle $detalle): void
+    {
+        $detalle->vales()->update(['aplicado_en_planilla' => false, 'planilla_detalle_id' => null]);
+        $detalle->comprasTienda()->update(['planilla_detalle_id' => null]);
+        $detalle->llegadasTarde()->update(['planilla_detalle_id' => null]);
+
+        $detalle->prestamoAbonos()->with('prestamo')->get()->each(function (PrestamoAbono $abono) {
+            $prestamo = $abono->prestamo;
+
+            if ($prestamo) {
+                $prestamo->saldo_pendiente = round((float) $prestamo->saldo_pendiente + (float) $abono->monto, 2);
+                if ($prestamo->estado === 'pagado' && $prestamo->saldo_pendiente > 0) {
+                    $prestamo->estado = 'activo';
+                }
+                $prestamo->save();
+            }
+
+            $abono->delete();
+        });
+
+        $detalle->delete();
     }
 }

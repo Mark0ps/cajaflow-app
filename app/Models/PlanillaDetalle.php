@@ -109,6 +109,29 @@ class PlanillaDetalle extends Model
     }
 
     /**
+     * Recalcula los sub-totales de deducciones desde sus relaciones
+     * (vales, compras en tienda, llegadas tarde, abono de préstamo) y luego
+     * el total_a_pagar. Se usa tras cualquier cambio al CRUD de consumo
+     * interno (compras_tienda) de esta quincena.
+     */
+    public function recalcularTodo(): void
+    {
+        $this->total_vales = (float) $this->vales()->sum('monto');
+        $this->total_compras_tienda = (float) $this->comprasTienda()->sum('valor');
+        $this->total_llegadas_tarde = (float) $this->llegadasTarde()->sum('valor_deduccion');
+        $this->total_abono_prestamo = (float) $this->prestamoAbonos()->sum('monto');
+
+        $this->total_deducciones = round(
+            $this->total_vales + $this->total_compras_tienda
+            + $this->total_llegadas_tarde + $this->total_abono_prestamo
+            + (float) $this->otras_deducciones,
+            2
+        );
+
+        $this->recalcularTotal();
+    }
+
+    /**
      * Aplica un monto de un pago a esta quincena y actualiza sus estados.
      * Debe llamarse dentro de una transacción (ver PagoPlanillaService).
      */

@@ -4,19 +4,18 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class GenerarPlanillaRequest extends FormRequest
+class ActualizarPlanillaRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('create', \App\Models\Planilla::class);
+        $planilla = $this->route('planilla');
+
+        return $planilla && $this->user()->can('update', $planilla);
     }
 
     public function rules(): array
     {
         return [
-            'anio' => ['required', 'integer', 'min:2020', 'max:2100'],
-            'mes' => ['required', 'integer', 'min:1', 'max:12'],
-            'quincena' => ['required', 'integer', 'in:1,2'],
             'empleado_ids' => ['required', 'array', 'min:1'],
             'empleado_ids.*' => ['exists:empleados,id'],
         ];

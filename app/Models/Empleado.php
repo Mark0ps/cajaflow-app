@@ -86,6 +86,12 @@ class Empleado extends Model
         return trim("{$this->nombre} {$this->apellido}");
     }
 
+    /** Empleados que pueden cubrir un turno de caja (checklist de turno / vales). */
+    public function scopeSoloTurno($query)
+    {
+        return $query->whereIn('cargo', ['cajero_barista', 'cocinero']);
+    }
+
     /** Suma de todas las planilla_detalles con saldo pendiente > 0. */
     public function saldoPendienteTotal(): float
     {

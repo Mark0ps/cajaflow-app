@@ -31,4 +31,9 @@ class PlanillaPolicy
     {
         return $user->isAdmin() && $planilla->estado === 'borrador';
     }
+
+    public function eliminar(User $user, Planilla $planilla): bool
+    {
+        return $user->isAdmin() && $planilla->estado === 'borrador';
+    }
 }
