@@ -86,11 +86,17 @@ class CierreCaja extends Model
     public function recalcularTotales(): void
     {
         $this->total_ingreso = $this->efectivo + $this->tarjeta_credito + $this->transferencia;
-        $this->diferencia = $this->venta_sistema_a2 !== null
-            ? round($this->total_ingreso - $this->venta_sistema_a2, 2)
-            : 0;
         $this->total_gastos = $this->gastos()->sum('valor');
         $this->total_vales = $this->vales()->sum('monto');
-        $this->efectivo_dia_venta = $this->efectivo - $this->total_gastos - $this->total_vales;
+
+        // efectivo es el monto NETO que queda físico en caja al cierre (ya
+        // pagados los gastos/vales desde la gaveta) — para comparar contra la
+        // venta bruta reportada por A2 Food, se reconstruye el bruto sumando
+        // de vuelta lo que salió de la gaveta en gastos y vales.
+        $this->diferencia = $this->venta_sistema_a2 !== null
+            ? round(($this->total_ingreso + $this->total_gastos + $this->total_vales) - $this->venta_sistema_a2, 2)
+            : 0;
+
+        $this->efectivo_dia_venta = $this->efectivo;
     }
 }

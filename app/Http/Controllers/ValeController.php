@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ActualizarValeRequest;
 use App\Http\Requests\ValeRequest;
 use App\Models\CierreCaja;
 use App\Models\Vale;
@@ -18,6 +19,15 @@ class ValeController extends Controller
         $vale = $this->service->agregarVale($cierre, $request->validated());
 
         return response()->json($vale->load('empleado:id,nombre,apellido'), 201);
+    }
+
+    public function update(ActualizarValeRequest $request, CierreCaja $cierre, Vale $vale)
+    {
+        $this->authorize('update', $cierre);
+
+        $vale = $this->service->actualizarVale($cierre, $vale, $request->validated());
+
+        return response()->json($vale->fresh('empleado:id,nombre,apellido'));
     }
 
     public function destroy(CierreCaja $cierre, Vale $vale)

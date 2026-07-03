@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ActualizarFacturaRequest;
+use App\Http\Requests\ActualizarGastoRequest;
 use App\Http\Requests\GastoExternoRequest;
 use App\Http\Requests\GastoRequest;
 use App\Models\CierreCaja;
@@ -76,6 +77,16 @@ class GastoController extends Controller
         ]);
 
         return response()->json($gasto);
+    }
+
+    public function update(ActualizarGastoRequest $request, CierreCaja $cierre, Gasto $gasto)
+    {
+        $gasto = $this->service->actualizarGasto($cierre, $gasto, $request->validated());
+
+        // fresh() en vez de load(): evita devolver una relación cierreCaja
+        // obsoleta que ActualizarGastoRequest::authorize() ya dejó en caché
+        // (vía GastoPolicy::editarPropio()) antes de recalcularTotales().
+        return response()->json($gasto->fresh('proveedor'));
     }
 
     public function destroy(CierreCaja $cierre, Gasto $gasto)

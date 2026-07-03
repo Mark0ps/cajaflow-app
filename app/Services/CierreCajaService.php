@@ -80,14 +80,32 @@ class CierreCajaService
         $gasto = $cierre->gastos()->create([
             'proveedor_id' => $data['proveedor_id'] ?? null,
             'proveedor_nombre_libre' => $data['proveedor_nombre_libre'] ?? null,
-            'descripcion' => $data['descripcion'],
+            'descripcion' => $data['descripcion'] ?? null,
             'numero_factura' => $data['numero_factura'] ?? null,
             'factura_pendiente' => empty($data['numero_factura']),
-            'tipo_pago' => $data['tipo_pago'],
+            // Los gastos de un cierre de caja son siempre en efectivo — el
+            // usuario no elige tipo_pago aquí (sí puede en GastoExternoRequest).
+            'tipo_pago' => 'efectivo',
             'valor' => $data['valor'],
             'es_externo' => false,
             'agregado_por' => $agregadoPor->id,
         ]);
+
+        $cierre->recalcularTotales();
+        $cierre->save();
+
+        return $gasto;
+    }
+
+    public function actualizarGasto(CierreCaja $cierre, Gasto $gasto, array $data): Gasto
+    {
+        $this->asegurarAbierto($cierre);
+
+        if (array_key_exists('numero_factura', $data)) {
+            $data['factura_pendiente'] = empty($data['numero_factura']);
+        }
+
+        $gasto->update($data);
 
         $cierre->recalcularTotales();
         $cierre->save();
@@ -112,6 +130,18 @@ class CierreCajaService
             'monto' => $data['monto'],
             'descripcion' => $data['descripcion'] ?? null,
         ]);
+
+        $cierre->recalcularTotales();
+        $cierre->save();
+
+        return $vale;
+    }
+
+    public function actualizarVale(CierreCaja $cierre, Vale $vale, array $data): Vale
+    {
+        $this->asegurarAbierto($cierre);
+
+        $vale->update($data);
 
         $cierre->recalcularTotales();
         $cierre->save();

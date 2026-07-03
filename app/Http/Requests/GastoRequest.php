@@ -3,7 +3,6 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class GastoRequest extends FormRequest
 {
@@ -19,9 +18,10 @@ class GastoRequest extends FormRequest
             'proveedor_id' => ['nullable', 'exists:proveedores,id', 'required_without:proveedor_nombre_libre'],
             'proveedor_nombre_libre' => ['nullable', 'string', 'max:255', 'required_without:proveedor_id'],
 
-            'descripcion' => ['required', 'string', 'max:255'],
+            'descripcion' => ['nullable', 'string', 'max:255'],
             'numero_factura' => ['nullable', 'string', 'max:100'],
-            'tipo_pago' => ['required', Rule::in(['efectivo', 'tarjeta', 'transferencia', 'cheque'])],
+            // tipo_pago no se valida aquí: los gastos de un cierre de caja son
+            // siempre en efectivo — lo fija CierreCajaService::agregarGasto().
             'valor' => ['required', 'numeric', 'min:0.01'],
         ];
     }
