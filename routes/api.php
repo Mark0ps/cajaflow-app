@@ -13,8 +13,10 @@ use App\Http\Controllers\ProveedorController;
 use App\Http\Controllers\ValeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PagoPlanillaController;
 use App\Http\Controllers\PlanillaController;
+use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\PlanillaDetalleComprasController;
 use App\Http\Controllers\PrestamoController;
 
@@ -77,6 +79,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('empleados/{empleado}/prestamos', [PrestamoController::class, 'index']);
     Route::post('prestamos', [PrestamoController::class, 'store']);
     Route::get('prestamos/{prestamo}', [PrestamoController::class, 'show']);
+
+    // Dashboard y reportes (solo admin/secretaria, validado en los controllers)
+    Route::get('dashboard/resumen-mensual', [DashboardController::class, 'resumenMensual']);
+    Route::get('dashboard/dia', [DashboardController::class, 'dia']);
+    Route::get('reportes/periodo', [ReporteController::class, 'periodo']);
+    Route::get('reportes/metodo-pago', [ReporteController::class, 'metodoPago']);
+    Route::get('reportes/gastos-vs-ingresos', [ReporteController::class, 'gastosVsIngresos']);
+    Route::get('reportes/vales-por-empleado', [ReporteController::class, 'valesPorEmpleado']);
 
     // Estado de cuenta y pagos (el flujo de "pagos atrasados")
     Route::get('empleados/{empleado}/estado-cuenta', [PagoPlanillaController::class, 'estadoCuenta']);
