@@ -19,12 +19,12 @@ class UserSeeder extends Seeder
      * de contraseña en el primer login real de cada usuario.
      */
     private const USUARIOS = [
-        ['empleado' => ['Carlos Omar', 'Palacios Casco'], 'email' => 'carlos@cajaflow.test', 'role' => 'admin'],
-        ['empleado' => ['Claudia Aracely', 'Gomez Hernandez'], 'email' => 'claudia@cajaflow.test', 'role' => 'admin'],
-        ['empleado' => ['Marcos Andres', 'Enamorado Gomez'], 'email' => 'marcos@cajaflow.test', 'role' => 'admin'],
-        ['empleado' => ['Maria Roxana', 'Hernandez Rivera'], 'email' => 'roxana@cajaflow.test', 'role' => 'secretaria'],
-        ['empleado' => ['Marlene Adalhitza', 'Romero Ham'], 'email' => 'marlene@cajaflow.test', 'role' => 'cajero'],
-        ['empleado' => ['Ivis Carolina', 'Bu'], 'email' => 'ivis@cajaflow.test', 'role' => 'cajero'],
+        ['empleado' => ['Carlos Omar', 'Palacios Casco'], 'email' => 'carlos@cajaflow.test', 'username' => 'carlosp', 'role' => 'admin'],
+        ['empleado' => ['Claudia Aracely', 'Gomez Hernandez'], 'email' => 'claudia@cajaflow.test', 'username' => 'claudiag', 'role' => 'admin'],
+        ['empleado' => ['Marcos Andres', 'Enamorado Gomez'], 'email' => 'marcos@cajaflow.test', 'username' => 'marcose', 'role' => 'admin'],
+        ['empleado' => ['Maria Roxana', 'Hernandez Rivera'], 'email' => 'roxana@cajaflow.test', 'username' => 'roxanah', 'role' => 'secretaria'],
+        ['empleado' => ['Marlene Adalhitza', 'Romero Ham'], 'email' => 'marlene@cajaflow.test', 'username' => 'marlener', 'role' => 'cajero'],
+        ['empleado' => ['Ivis Carolina', 'Bu'], 'email' => 'ivis@cajaflow.test', 'username' => 'ivisb', 'role' => 'cajero'],
     ];
 
     public function run(): void
@@ -38,7 +38,7 @@ class UserSeeder extends Seeder
                 continue;
             }
 
-            User::firstOrCreate(
+            $user = User::firstOrCreate(
                 ['email' => $data['email']],
                 [
                     'name' => $empleado->nombreCompleto(),
@@ -49,6 +49,10 @@ class UserSeeder extends Seeder
                     'email_verified_at' => now(),
                 ]
             );
+
+            // Se actualiza aparte para que a los usuarios ya sembrados antes de
+            // agregar `username` también les quede asignado al re-correr el seeder.
+            $user->update(['username' => $data['username']]);
         }
 
         $this->command->info(count(self::USUARIOS) . ' usuarios sembrados. Password temporal: cajaflow2026');
