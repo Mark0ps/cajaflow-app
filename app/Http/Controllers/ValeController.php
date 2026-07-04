@@ -7,6 +7,7 @@ use App\Http\Requests\ValeRequest;
 use App\Models\CierreCaja;
 use App\Models\Vale;
 use App\Services\CierreCajaService;
+use Illuminate\Http\Request;
 
 class ValeController extends Controller
 {
@@ -16,7 +17,7 @@ class ValeController extends Controller
 
     public function store(ValeRequest $request, CierreCaja $cierre)
     {
-        $vale = $this->service->agregarVale($cierre, $request->validated());
+        $vale = $this->service->agregarVale($cierre, $request->validated(), $request->user(), $request->input('motivo'));
 
         return response()->json($vale->load('empleado:id,nombre,apellido'), 201);
     }
@@ -25,16 +26,22 @@ class ValeController extends Controller
     {
         $this->authorize('update', $cierre);
 
-        $vale = $this->service->actualizarVale($cierre, $vale, $request->validated());
+        $vale = $this->service->actualizarVale(
+            $cierre,
+            $vale,
+            $request->validated(),
+            $request->user(),
+            $request->input('motivo'),
+        );
 
         return response()->json($vale->fresh('empleado:id,nombre,apellido'));
     }
 
-    public function destroy(CierreCaja $cierre, Vale $vale)
+    public function destroy(Request $request, CierreCaja $cierre, Vale $vale)
     {
         $this->authorize('update', $cierre);
 
-        $this->service->eliminarVale($cierre, $vale);
+        $this->service->eliminarVale($cierre, $vale, $request->user(), $request->input('motivo'));
 
         return response()->noContent();
     }

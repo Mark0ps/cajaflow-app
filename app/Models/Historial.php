@@ -12,7 +12,7 @@ class Historial extends Model
 
     protected $table = 'historial';
 
-    protected $fillable = ['tabla', 'registro_id', 'accion', 'user_id', 'datos_antes', 'datos_despues'];
+    protected $fillable = ['tabla', 'registro_id', 'accion', 'user_id', 'motivo', 'datos_antes', 'datos_despues'];
 
     protected $casts = [
         'datos_antes' => 'array',

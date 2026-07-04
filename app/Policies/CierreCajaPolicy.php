@@ -29,12 +29,16 @@ class CierreCajaPolicy
 
     public function update(User $user, CierreCaja $cierre): bool
     {
-        if ($cierre->estado !== 'abierto') {
-            return false;
-        }
-
+        // Admin siempre puede editar/eliminar ingresos, gastos y vales, incluso
+        // con el cierre ya cerrado (con motivo obligatorio, exigido en el
+        // Service). El bloqueo por estado "solo mientras abierto" es
+        // exclusivamente para el cajero dueño del turno.
         if ($user->isAdmin()) {
             return true;
+        }
+
+        if ($cierre->estado !== 'abierto') {
+            return false;
         }
 
         return $user->isCajero() && $cierre->user_id === $user->id;
@@ -48,5 +52,11 @@ class CierreCajaPolicy
     public function revisar(User $user, CierreCaja $cierre): bool
     {
         return ($user->isAdmin() || $user->isSecretaria()) && $cierre->estado === 'cerrado';
+    }
+
+    /** Eliminar el cierre completo — mismo patrón que Planilla: solo Admin, con contraseña. */
+    public function eliminar(User $user, CierreCaja $cierre): bool
+    {
+        return $user->isAdmin();
     }
 }

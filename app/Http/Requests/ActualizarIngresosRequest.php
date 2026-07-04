@@ -18,6 +18,10 @@ class ActualizarIngresosRequest extends FormRequest
             'tarjeta_credito' => ['sometimes', 'numeric', 'min:0'],
             'transferencia' => ['sometimes', 'numeric', 'min:0'],
             'venta_sistema_a2' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'observaciones' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            // Obligatorio solo si el cierre ya no está abierto y quien edita es
+            // Admin — esa regla de negocio vive en CierreCajaService, no aquí.
+            'motivo' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }
 }

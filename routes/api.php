@@ -40,12 +40,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Cierres de caja
     Route::get('cierres-caja', [CierreCajaController::class, 'index']);
     Route::post('cierres-caja', [CierreCajaController::class, 'store']);
+    Route::get('cajeros', [CierreCajaController::class, 'cajeros']);
     Route::get('cierres-caja/{cierre}', [CierreCajaController::class, 'show']);
     Route::patch('cierres-caja/{cierre}/ingresos', [CierreCajaController::class, 'actualizarIngresos']);
     Route::post('cierres-caja/{cierre}/empleados', [CierreCajaController::class, 'agregarEmpleado']);
     Route::delete('cierres-caja/{cierre}/empleados/{empleado}', [CierreCajaController::class, 'quitarEmpleado']);
     Route::post('cierres-caja/{cierre}/cerrar', [CierreCajaController::class, 'cerrar']);
     Route::post('cierres-caja/{cierre}/revisar', [CierreCajaController::class, 'revisar']);
+    Route::delete('cierres-caja/{cierre}', [CierreCajaController::class, 'destroy']);
 
     // Gastos (anidados bajo un cierre) + gastos externos + facturas pendientes
     Route::post('cierres-caja/{cierre}/gastos', [GastoController::class, 'store']);

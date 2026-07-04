@@ -17,6 +17,7 @@ class ValeRequest extends FormRequest
             'empleado_id' => ['required', 'exists:empleados,id'],
             'monto' => ['required', 'numeric', 'min:0.01'],
             'descripcion' => ['nullable', 'string', 'max:255'],
+            'motivo' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }
 }

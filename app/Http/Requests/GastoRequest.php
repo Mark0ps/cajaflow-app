@@ -23,6 +23,7 @@ class GastoRequest extends FormRequest
             // tipo_pago no se valida aquí: los gastos de un cierre de caja son
             // siempre en efectivo — lo fija CierreCajaService::agregarGasto().
             'valor' => ['required', 'numeric', 'min:0.01'],
+            'motivo' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }
 }

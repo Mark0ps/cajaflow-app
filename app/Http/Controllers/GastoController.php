@@ -49,7 +49,12 @@ class GastoController extends Controller
     {
         $this->authorize('update', $cierre); // el turno debe estar abierto y ser del cajero (o admin)
 
-        $gasto = $this->service->agregarGasto($cierre, $request->user(), $request->validated());
+        $gasto = $this->service->agregarGasto(
+            $cierre,
+            $request->user(),
+            $request->validated(),
+            $request->input('motivo'),
+        );
 
         return response()->json($gasto->load('proveedor'), 201);
     }
@@ -81,7 +86,13 @@ class GastoController extends Controller
 
     public function update(ActualizarGastoRequest $request, CierreCaja $cierre, Gasto $gasto)
     {
-        $gasto = $this->service->actualizarGasto($cierre, $gasto, $request->validated());
+        $gasto = $this->service->actualizarGasto(
+            $cierre,
+            $gasto,
+            $request->validated(),
+            $request->user(),
+            $request->input('motivo'),
+        );
 
         // fresh() en vez de load(): evita devolver una relación cierreCaja
         // obsoleta que ActualizarGastoRequest::authorize() ya dejó en caché
@@ -89,11 +100,11 @@ class GastoController extends Controller
         return response()->json($gasto->fresh('proveedor'));
     }
 
-    public function destroy(CierreCaja $cierre, Gasto $gasto)
+    public function destroy(Request $request, CierreCaja $cierre, Gasto $gasto)
     {
         $this->authorize('delete', $gasto);
 
-        $this->service->eliminarGasto($cierre, $gasto);
+        $this->service->eliminarGasto($cierre, $gasto, $request->user(), $request->input('motivo'));
 
         return response()->noContent();
     }

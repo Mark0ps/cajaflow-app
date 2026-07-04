@@ -6,8 +6,11 @@ use App\Http\Requests\AbrirCierreRequest;
 use App\Http\Requests\ActualizarIngresosRequest;
 use App\Models\CierreCaja;
 use App\Models\Empleado;
+use App\Models\User;
 use App\Services\CierreCajaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 
 class CierreCajaController extends Controller
 {
@@ -23,8 +26,15 @@ class CierreCajaController extends Controller
     {
         $query = CierreCaja::query()->with(['cajero:id,name'])->latest('fecha');
 
-        if ($request->user()->isCajero()) {
+        // "mio=1" fuerza el filtro por el usuario autenticado sin importar el
+        // rol — lo usa MiCaja.jsx para que Admin también vea solo su propio
+        // turno abierto, no el de cualquier cajero.
+        if ($request->boolean('mio')) {
             $query->where('user_id', $request->user()->id);
+        } elseif ($request->user()->isCajero()) {
+            $query->where('user_id', $request->user()->id);
+        } elseif ($request->filled('cajero_id')) {
+            $query->where('user_id', $request->integer('cajero_id'));
         }
 
         if ($request->filled('fecha')) {
@@ -58,9 +68,20 @@ class CierreCajaController extends Controller
 
     public function actualizarIngresos(ActualizarIngresosRequest $request, CierreCaja $cierre)
     {
-        $cierre = $this->service->actualizarIngresos($cierre, $request->validated());
+        $cierre = $this->service->actualizarIngresos(
+            $cierre,
+            $request->validated(),
+            $request->user(),
+            $request->input('motivo'),
+        );
 
         return response()->json($cierre);
+    }
+
+    /** Listado simple para el filtro por cajero de CierresCajaListado.jsx. */
+    public function cajeros()
+    {
+        return User::where('role', 'cajero')->orderBy('name')->get(['id', 'name']);
     }
 
     public function agregarEmpleado(Request $request, CierreCaja $cierre)
@@ -100,5 +121,27 @@ class CierreCajaController extends Controller
         $cierre = $this->service->marcarRevisado($cierre, request()->user());
 
         return response()->json($cierre);
+    }
+
+    /** Eliminar el cierre completo — mismo patrón de contraseña que Planilla. */
+    public function destroy(Request $request, CierreCaja $cierre)
+    {
+        $this->authorize('eliminar', $cierre);
+        $this->verificarPassword($request);
+
+        $this->service->eliminar($cierre);
+
+        return response()->noContent();
+    }
+
+    private function verificarPassword(Request $request): void
+    {
+        $request->validate(['password' => ['required', 'string']]);
+
+        if (! Hash::check($request->input('password'), $request->user()->password)) {
+            throw ValidationException::withMessages([
+                'password' => 'Contraseña incorrecta.',
+            ]);
+        }
     }
 }

@@ -20,6 +20,7 @@ class ActualizarGastoRequest extends FormRequest
             'numero_factura' => ['sometimes', 'nullable', 'string', 'max:100'],
             // tipo_pago no se valida ni se edita aquí: sigue fijo en efectivo.
             'valor' => ['sometimes', 'numeric', 'min:0.01'],
+            'motivo' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }
 }

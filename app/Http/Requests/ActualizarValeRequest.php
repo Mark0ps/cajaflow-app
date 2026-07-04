@@ -19,6 +19,7 @@ class ActualizarValeRequest extends FormRequest
             'empleado_id' => ['sometimes', 'exists:empleados,id'],
             'monto' => ['sometimes', 'numeric', 'min:0.01'],
             'descripcion' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'motivo' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }
 }
