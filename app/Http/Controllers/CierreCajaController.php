@@ -63,7 +63,14 @@ class CierreCajaController extends Controller
     {
         $this->authorize('view', $cierre);
 
-        return $cierre->load(['cajero:id,name', 'empleadosTurno:id,nombre,apellido', 'gastos.proveedor', 'vales.empleado']);
+        return $cierre->load([
+            'cajero:id,name',
+            'empleadosTurno:id,nombre,apellido',
+            'gastos.proveedor',
+            'vales.empleado',
+            'movimientosEfectivo.registradoPor:id,name',
+            'fotos.subidoPor:id,name',
+        ]);
     }
 
     public function actualizarIngresos(ActualizarIngresosRequest $request, CierreCaja $cierre)

@@ -2,57 +2,55 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\CompraTiendaRequest;
-use App\Models\CompraTienda;
+use App\Http\Requests\LlegadaTardeRequest;
+use App\Models\LlegadaTarde;
 use App\Models\Planilla;
 use App\Models\PlanillaDetalle;
 use Illuminate\Validation\ValidationException;
 
-class PlanillaDetalleComprasController extends Controller
+class PlanillaDetalleLlegadasController extends Controller
 {
-    public function store(CompraTiendaRequest $request, Planilla $planilla, PlanillaDetalle $detalle)
+    public function store(LlegadaTardeRequest $request, Planilla $planilla, PlanillaDetalle $detalle)
     {
         $this->verificarDetalle($planilla, $detalle);
 
-        $compra = $detalle->comprasTienda()->create([
+        $llegada = $detalle->llegadasTarde()->create([
             'empleado_id' => $detalle->empleado_id,
-            'tipo' => $request->input('tipo', 'compra_credito'),
             'fecha' => $request->input('fecha'),
-            'descripcion' => $request->input('descripcion'),
-            'motivo' => $request->input('motivo'),
-            'valor' => $request->input('valor'),
+            'minutos_tarde' => $request->input('minutos_tarde'),
+            'valor_deduccion' => $request->input('valor_deduccion'),
         ]);
 
         $detalle->recalcularTodo();
 
         return response()->json([
-            'compra' => $compra,
+            'llegada' => $llegada,
             'detalle' => $detalle->fresh(['comprasTienda', 'llegadasTarde', 'prestamoAbonos.prestamo']),
         ], 201);
     }
 
-    public function update(CompraTiendaRequest $request, Planilla $planilla, PlanillaDetalle $detalle, CompraTienda $compra)
+    public function update(LlegadaTardeRequest $request, Planilla $planilla, PlanillaDetalle $detalle, LlegadaTarde $llegada)
     {
         $this->verificarDetalle($planilla, $detalle);
-        $this->verificarCompra($detalle, $compra);
+        $this->verificarLlegada($detalle, $llegada);
 
-        $compra->update($request->validated());
+        $llegada->update($request->validated());
 
         $detalle->recalcularTodo();
 
         return response()->json([
-            'compra' => $compra->fresh(),
+            'llegada' => $llegada->fresh(),
             'detalle' => $detalle->fresh(['comprasTienda', 'llegadasTarde', 'prestamoAbonos.prestamo']),
         ]);
     }
 
-    public function destroy(Planilla $planilla, PlanillaDetalle $detalle, CompraTienda $compra)
+    public function destroy(Planilla $planilla, PlanillaDetalle $detalle, LlegadaTarde $llegada)
     {
         $this->authorize('update', $planilla);
         $this->verificarDetalle($planilla, $detalle);
-        $this->verificarCompra($detalle, $compra);
+        $this->verificarLlegada($detalle, $llegada);
 
-        $compra->delete();
+        $llegada->delete();
 
         $detalle->recalcularTodo();
 
@@ -68,11 +66,11 @@ class PlanillaDetalleComprasController extends Controller
         }
     }
 
-    private function verificarCompra(PlanillaDetalle $detalle, CompraTienda $compra): void
+    private function verificarLlegada(PlanillaDetalle $detalle, LlegadaTarde $llegada): void
     {
-        if ($compra->planilla_detalle_id !== $detalle->id) {
+        if ($llegada->planilla_detalle_id !== $detalle->id) {
             throw ValidationException::withMessages([
-                'compra' => 'Esta compra no pertenece al detalle indicado.',
+                'llegada' => 'Esta llegada tarde no pertenece al detalle indicado.',
             ]);
         }
     }

@@ -3,12 +3,15 @@
 namespace App\Services;
 
 use App\Models\CierreCaja;
+use App\Models\CierreFoto;
 use App\Models\Empleado;
 use App\Models\Gasto;
 use App\Models\Historial;
+use App\Models\MovimientoEfectivo;
 use App\Models\User;
 use App\Models\Vale;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class CierreCajaService
@@ -191,6 +194,83 @@ class CierreCajaService
     }
 
     /**
+     * Entrada/salida de efectivo durante el turno (retiro de exceso, fondo
+     * adicional, ingreso ajeno a la venta de A2 Food, etc). A diferencia de
+     * gastos/vales, el motivo es obligatorio siempre (lo exige el Request),
+     * no solo cuando el cierre ya no está abierto — pero solo queda rastro
+     * en `historial` cuando la edición ocurrió con el cierre ya cerrado,
+     * igual que el resto de entidades.
+     */
+    public function agregarMovimientoEfectivo(CierreCaja $cierre, array $data, User $user, string $motivo): MovimientoEfectivo
+    {
+        $this->autorizarEdicion($cierre, $user, $motivo);
+
+        $movimiento = $cierre->movimientosEfectivo()->create([
+            'tipo' => $data['tipo'],
+            'monto' => $data['monto'],
+            'motivo' => $motivo,
+            'registrado_por' => $user->id,
+        ]);
+
+        $cierre->recalcularTotales();
+        $cierre->save();
+
+        $motivoHistorial = $cierre->estado !== 'abierto' ? $motivo : null;
+        $this->registrarHistorialSiAplica($user, $motivoHistorial, 'movimientos_efectivo', $movimiento->id, 'creado', [], $movimiento->toArray());
+
+        return $movimiento;
+    }
+
+    public function eliminarMovimientoEfectivo(CierreCaja $cierre, MovimientoEfectivo $movimiento, User $user, string $motivo): void
+    {
+        $this->autorizarEdicion($cierre, $user, $motivo);
+
+        $antes = $movimiento->toArray();
+        $movimientoId = $movimiento->id;
+
+        $movimiento->delete();
+        $cierre->recalcularTotales();
+        $cierre->save();
+
+        $motivoHistorial = $cierre->estado !== 'abierto' ? $motivo : null;
+        $this->registrarHistorialSiAplica($user, $motivoHistorial, 'movimientos_efectivo', $movimientoId, 'eliminado', $antes, []);
+    }
+
+    /**
+     * Adjunta una foto ya subida a disco (el path lo resuelve el controller
+     * antes de llamar aquí, para poder validar el motivo ANTES de escribir el
+     * archivo — ver CierreFotoController::store()). No afecta recalcularTotales.
+     */
+    public function agregarFoto(CierreCaja $cierre, User $user, string $fotoPath, ?string $descripcion, ?string $motivo = null): CierreFoto
+    {
+        $this->autorizarEdicion($cierre, $user, $motivo);
+
+        $foto = $cierre->fotos()->create([
+            'foto_path' => $fotoPath,
+            'descripcion' => $descripcion,
+            'subido_por' => $user->id,
+        ]);
+
+        $this->registrarHistorialSiAplica($user, $motivo, 'cierre_fotos', $foto->id, 'creado', [], $foto->toArray());
+
+        return $foto;
+    }
+
+    public function eliminarFoto(CierreCaja $cierre, CierreFoto $foto, User $user, ?string $motivo = null): void
+    {
+        $this->autorizarEdicion($cierre, $user, $motivo);
+
+        $antes = $foto->toArray();
+        $fotoId = $foto->id;
+        $path = $foto->foto_path;
+
+        $foto->delete();
+        Storage::disk('public')->delete($path);
+
+        $this->registrarHistorialSiAplica($user, $motivo, 'cierre_fotos', $fotoId, 'eliminado', $antes, []);
+    }
+
+    /**
      * Cierra el turno: recalcula todo por última vez y bloquea edición.
      * A partir de aquí, gastos/vales/ingresos de este cierre son inmutables
      * para el cajero (Admin puede seguir corrigiendo con motivo obligatorio).
@@ -204,7 +284,7 @@ class CierreCajaService
             $cierre->estado = 'cerrado';
             $cierre->save();
 
-            return $cierre->fresh(['gastos', 'vales', 'empleadosTurno']);
+            return $cierre->fresh(['gastos', 'vales', 'movimientosEfectivo', 'empleadosTurno']);
         });
     }
 
@@ -237,6 +317,11 @@ class CierreCajaService
      * misma tabla también sirve para gastos externos sin cierre asociado —
      * por eso los gastos del cierre se borran a mano aquí en vez de confiar
      * en la FK, que solo los dejaría huérfanos con cierre_caja_id = null.
+     *
+     * `cierre_fotos.cierre_caja_id` sí usa cascadeOnDelete, así que las filas
+     * se borran solas — pero los ARCHIVOS en `storage/app/public` no, por eso
+     * se borran a mano aquí antes de que la fila (y por ende `foto_path`)
+     * desaparezca.
      */
     public function eliminar(CierreCaja $cierre): void
     {
@@ -249,8 +334,12 @@ class CierreCajaService
         }
 
         DB::transaction(function () use ($cierre) {
+            foreach ($cierre->fotos as $foto) {
+                Storage::disk('public')->delete($foto->foto_path);
+            }
+
             $cierre->gastos()->delete();
-            $cierre->delete();
+            $cierre->delete(); // vales y fotos cascadean por FK
         });
     }
 
@@ -261,8 +350,12 @@ class CierreCajaService
      * indicar un motivo — el resto (incluida Secretaria, que no llega a
      * estos métodos porque su UI no expone edición de gastos/vales/ingresos)
      * queda bloqueado.
+     *
+     * Pública (no privada) porque CierreFotoController::store() necesita
+     * invocarla ANTES de escribir el archivo a disco — si el motivo falta,
+     * así se evita subir un archivo huérfano que luego habría que limpiar.
      */
-    private function autorizarEdicion(CierreCaja $cierre, User $user, ?string $motivo): void
+    public function autorizarEdicion(CierreCaja $cierre, User $user, ?string $motivo): void
     {
         if ($cierre->estado === 'abierto') {
             return;

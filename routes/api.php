@@ -7,8 +7,10 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CierreCajaController;
+use App\Http\Controllers\CierreFotoController;
 use App\Http\Controllers\EmpleadoController;
 use App\Http\Controllers\GastoController;
+use App\Http\Controllers\MovimientoEfectivoController;
 use App\Http\Controllers\ProveedorController;
 use App\Http\Controllers\ValeController;
 use Illuminate\Http\Request;
@@ -18,6 +20,8 @@ use App\Http\Controllers\PagoPlanillaController;
 use App\Http\Controllers\PlanillaController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\PlanillaDetalleComprasController;
+use App\Http\Controllers\PlanillaDetalleLlegadasController;
+use App\Http\Controllers\PlanillaDetallePrestamoController;
 use App\Http\Controllers\PrestamoController;
 
 Route::post('login', [AuthController::class, 'login'])->middleware('throttle:5,1');
@@ -63,6 +67,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('cierres-caja/{cierre}/vales/{vale}', [ValeController::class, 'destroy']);
     Route::get('empleados/{empleado}/vales', [ValeController::class, 'porEmpleado']);
 
+    // Movimientos de efectivo (entradas/salidas durante el turno, anidados bajo un cierre)
+    Route::post('cierres-caja/{cierre}/movimientos', [MovimientoEfectivoController::class, 'store']);
+    Route::delete('cierres-caja/{cierre}/movimientos/{movimiento}', [MovimientoEfectivoController::class, 'destroy']);
+
+    // Fotos del turno (anidadas bajo un cierre)
+    Route::post('cierres-caja/{cierre}/fotos', [CierreFotoController::class, 'store']);
+    Route::delete('cierres-caja/{cierre}/fotos/{foto}', [CierreFotoController::class, 'destroy']);
+
     // Planillas
     Route::get('planillas', [PlanillaController::class, 'index']);
     Route::post('planillas', [PlanillaController::class, 'store']);
@@ -76,6 +88,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('planillas/{planilla}/detalles/{detalle}/compras-tienda', [PlanillaDetalleComprasController::class, 'store']);
     Route::patch('planillas/{planilla}/detalles/{detalle}/compras-tienda/{compra}', [PlanillaDetalleComprasController::class, 'update']);
     Route::delete('planillas/{planilla}/detalles/{detalle}/compras-tienda/{compra}', [PlanillaDetalleComprasController::class, 'destroy']);
+
+    // Llegadas tarde, anidado bajo el detalle de planilla
+    Route::post('planillas/{planilla}/detalles/{detalle}/llegadas-tarde', [PlanillaDetalleLlegadasController::class, 'store']);
+    Route::patch('planillas/{planilla}/detalles/{detalle}/llegadas-tarde/{llegada}', [PlanillaDetalleLlegadasController::class, 'update']);
+    Route::delete('planillas/{planilla}/detalles/{detalle}/llegadas-tarde/{llegada}', [PlanillaDetalleLlegadasController::class, 'destroy']);
+
+    // Abono de préstamo del detalle de planilla (edición del abono ya aplicado)
+    Route::patch('planillas/{planilla}/detalles/{detalle}/abono-prestamo', [PlanillaDetallePrestamoController::class, 'update']);
 
     // Préstamos (anidados bajo empleado para listar, sueltos para crear/ver)
     Route::get('empleados/{empleado}/prestamos', [PrestamoController::class, 'index']);

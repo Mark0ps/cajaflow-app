@@ -10,7 +10,7 @@ class PrestamoAbono extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['prestamo_id', 'planilla_detalle_id', 'monto', 'fecha'];
+    protected $fillable = ['prestamo_id', 'planilla_detalle_id', 'monto', 'motivo', 'fecha'];
 
     protected $casts = [
         'monto' => 'decimal:2',

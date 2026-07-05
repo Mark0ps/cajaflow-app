@@ -27,6 +27,8 @@ class CierreCaja extends Model
         'diferencia',
         'total_gastos',
         'total_vales',
+        'total_entradas',
+        'total_salidas',
         'efectivo_dia_venta',
         'estado',
         'observaciones',
@@ -45,6 +47,8 @@ class CierreCaja extends Model
         'diferencia' => 'decimal:2',
         'total_gastos' => 'decimal:2',
         'total_vales' => 'decimal:2',
+        'total_entradas' => 'decimal:2',
+        'total_salidas' => 'decimal:2',
         'efectivo_dia_venta' => 'decimal:2',
         'revisado_en' => 'datetime',
     ];
@@ -74,6 +78,16 @@ class CierreCaja extends Model
         return $this->hasMany(Vale::class);
     }
 
+    public function fotos(): HasMany
+    {
+        return $this->hasMany(CierreFoto::class);
+    }
+
+    public function movimientosEfectivo(): HasMany
+    {
+        return $this->hasMany(MovimientoEfectivo::class);
+    }
+
     public function scopeDelDia($query, $fecha)
     {
         return $query->whereDate('fecha', $fecha);
@@ -88,13 +102,16 @@ class CierreCaja extends Model
         $this->total_ingreso = $this->efectivo + $this->tarjeta_credito + $this->transferencia;
         $this->total_gastos = $this->gastos()->sum('valor');
         $this->total_vales = $this->vales()->sum('monto');
+        $this->total_entradas = $this->movimientosEfectivo()->where('tipo', 'entrada')->sum('monto');
+        $this->total_salidas = $this->movimientosEfectivo()->where('tipo', 'salida')->sum('monto');
 
         // efectivo es el monto NETO que queda físico en caja al cierre (ya
         // pagados los gastos/vales desde la gaveta) — para comparar contra la
         // venta bruta reportada por A2 Food, se reconstruye el bruto sumando
-        // de vuelta lo que salió de la gaveta en gastos y vales.
+        // de vuelta lo que salió de la gaveta en gastos y vales y salidas de
+        // efectivo, y restando las entradas de efectivo ajenas a la venta.
         $this->diferencia = $this->venta_sistema_a2 !== null
-            ? round(($this->total_ingreso + $this->total_gastos + $this->total_vales) - $this->venta_sistema_a2, 2)
+            ? round(($this->total_ingreso + $this->total_gastos + $this->total_vales + $this->total_salidas - $this->total_entradas) - $this->venta_sistema_a2, 2)
             : 0;
 
         $this->efectivo_dia_venta = $this->efectivo;

@@ -45,7 +45,7 @@ class PlanillaController extends Controller
     {
         $this->authorize('view', $planilla);
 
-        return $planilla->load('detalles.empleado', 'detalles.comprasTienda');
+        return $planilla->load('detalles.empleado', 'detalles.comprasTienda', 'detalles.llegadasTarde', 'detalles.prestamoAbonos.prestamo');
     }
 
     /** Agrega/quita empleados de una planilla en borrador (empleado_ids nuevo). */
@@ -124,7 +124,7 @@ class PlanillaController extends Controller
         $detalle->recalcularTotal();
 
         return response()->json([
-            'detalle' => $detalle->fresh(),
+            'detalle' => $detalle->fresh(['comprasTienda', 'llegadasTarde', 'prestamoAbonos.prestamo']),
             'tarifa_sugerida' => round((float) $detalle->sueldo_diario / 8 * 1.5, 2),
         ]);
     }
