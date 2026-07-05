@@ -69,6 +69,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Movimientos de efectivo (entradas/salidas durante el turno, anidados bajo un cierre)
     Route::post('cierres-caja/{cierre}/movimientos', [MovimientoEfectivoController::class, 'store']);
+    Route::patch('cierres-caja/{cierre}/movimientos/{movimiento}', [MovimientoEfectivoController::class, 'update']);
     Route::delete('cierres-caja/{cierre}/movimientos/{movimiento}', [MovimientoEfectivoController::class, 'destroy']);
 
     // Fotos del turno (anidadas bajo un cierre)

@@ -10,11 +10,26 @@ use App\Models\CierreCaja;
 use App\Models\Gasto;
 use App\Services\CierreCajaService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class GastoController extends Controller
 {
     public function __construct(private CierreCajaService $service)
     {
+    }
+
+    /**
+     * Mismo chequeo de pertenencia que en los recursos anidados de planillas:
+     * sin esto, la mutación cae sobre un gasto de OTRO cierre y recalcula los
+     * totales del cierre equivocado, dejando los del cierre real obsoletos.
+     */
+    private function verificarPertenencia(CierreCaja $cierre, Gasto $gasto): void
+    {
+        if ($gasto->cierre_caja_id !== $cierre->id) {
+            throw ValidationException::withMessages([
+                'gasto' => 'Este gasto no pertenece al cierre indicado.',
+            ]);
+        }
     }
 
     /**
@@ -86,6 +101,8 @@ class GastoController extends Controller
 
     public function update(ActualizarGastoRequest $request, CierreCaja $cierre, Gasto $gasto)
     {
+        $this->verificarPertenencia($cierre, $gasto);
+
         $gasto = $this->service->actualizarGasto(
             $cierre,
             $gasto,
@@ -103,6 +120,7 @@ class GastoController extends Controller
     public function destroy(Request $request, CierreCaja $cierre, Gasto $gasto)
     {
         $this->authorize('delete', $gasto);
+        $this->verificarPertenencia($cierre, $gasto);
 
         $this->service->eliminarGasto($cierre, $gasto, $request->user(), $request->input('motivo'));
 

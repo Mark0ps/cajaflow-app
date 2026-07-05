@@ -166,6 +166,7 @@ class CierreCajaService
     public function actualizarVale(CierreCaja $cierre, Vale $vale, array $data, User $user, ?string $motivo = null): Vale
     {
         $this->autorizarEdicion($cierre, $user, $motivo);
+        $this->asegurarValeNoAplicado($vale);
 
         $antes = $vale->toArray();
 
@@ -182,6 +183,7 @@ class CierreCajaService
     public function eliminarVale(CierreCaja $cierre, Vale $vale, User $user, ?string $motivo = null): void
     {
         $this->autorizarEdicion($cierre, $user, $motivo);
+        $this->asegurarValeNoAplicado($vale);
 
         $antes = $vale->toArray();
         $valeId = $vale->id;
@@ -217,6 +219,29 @@ class CierreCajaService
 
         $motivoHistorial = $cierre->estado !== 'abierto' ? $motivo : null;
         $this->registrarHistorialSiAplica($user, $motivoHistorial, 'movimientos_efectivo', $movimiento->id, 'creado', [], $movimiento->toArray());
+
+        return $movimiento;
+    }
+
+    /**
+     * Edita un movimiento existente (tipo, monto y/o su motivo). El motivo
+     * del movimiento es una columna del registro; la justificación de la
+     * edición ($motivoEdicion) es aparte, y es obligatoria solo cuando el
+     * cierre ya no está abierto — mismo patrón que gastos/vales.
+     */
+    public function actualizarMovimientoEfectivo(CierreCaja $cierre, MovimientoEfectivo $movimiento, array $data, User $user, ?string $motivoEdicion = null): MovimientoEfectivo
+    {
+        $this->autorizarEdicion($cierre, $user, $motivoEdicion);
+
+        $antes = $movimiento->toArray();
+
+        $movimiento->update(array_intersect_key($data, array_flip(['tipo', 'monto', 'motivo'])));
+
+        $cierre->recalcularTotales();
+        $cierre->save();
+
+        $motivoHistorial = $cierre->estado !== 'abierto' ? $motivoEdicion : null;
+        $this->registrarHistorialSiAplica($user, $motivoHistorial, 'movimientos_efectivo', $movimiento->id, 'editado', $antes, $movimiento->fresh()->toArray());
 
         return $movimiento;
     }
@@ -370,6 +395,22 @@ class CierreCajaService
         if (blank($motivo)) {
             throw ValidationException::withMessages([
                 'motivo' => 'Debes indicar un motivo para editar un cierre que ya no está abierto.',
+            ]);
+        }
+    }
+
+    /**
+     * Un vale ya absorbido por una planilla generada no se puede editar ni
+     * eliminar desde el cierre — cambiarlo dejaría el total_vales del detalle
+     * de planilla desincronizado en silencio. Mismo criterio protector que el
+     * bloqueo de eliminar() por vales aplicados: para modificarlo, primero hay
+     * que quitar al empleado de la planilla en borrador (eso libera el vale).
+     */
+    private function asegurarValeNoAplicado(Vale $vale): void
+    {
+        if ($vale->aplicado_en_planilla) {
+            throw ValidationException::withMessages([
+                'vale' => 'Este vale ya fue aplicado en una planilla. Quita al empleado de la planilla en borrador para liberarlo antes de modificarlo.',
             ]);
         }
     }

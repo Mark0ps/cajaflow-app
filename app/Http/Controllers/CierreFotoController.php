@@ -7,11 +7,22 @@ use App\Models\CierreCaja;
 use App\Models\CierreFoto;
 use App\Services\CierreCajaService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class CierreFotoController extends Controller
 {
     public function __construct(private CierreCajaService $service)
     {
+    }
+
+    /** Mismo chequeo de pertenencia que en los recursos anidados de planillas. */
+    private function verificarPertenencia(CierreCaja $cierre, CierreFoto $foto): void
+    {
+        if ($foto->cierre_caja_id !== $cierre->id) {
+            throw ValidationException::withMessages([
+                'foto' => 'Esta foto no pertenece al cierre indicado.',
+            ]);
+        }
     }
 
     public function store(CierreFotoRequest $request, CierreCaja $cierre)
@@ -36,6 +47,7 @@ class CierreFotoController extends Controller
     public function destroy(Request $request, CierreCaja $cierre, CierreFoto $foto)
     {
         $this->authorize('update', $cierre);
+        $this->verificarPertenencia($cierre, $foto);
 
         $this->service->eliminarFoto($cierre, $foto, $request->user(), $request->input('motivo'));
 
