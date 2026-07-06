@@ -77,13 +77,17 @@ class GastoController extends Controller
     /** Gasto externo del negocio (Secretaria/Admin), sin cierre asociado. */
     public function storeExterno(GastoExternoRequest $request)
     {
-        $gasto = Gasto::create([
-            ...$request->validated(),
+        $data = $request->validated();
+
+        $gastoData = Gasto::normalizarFacturaPorProveedor([
+            ...$data,
             'cierre_caja_id' => null,
             'es_externo' => true,
-            'factura_pendiente' => empty($request->validated()['numero_factura']),
+            'factura_pendiente' => empty($data['numero_factura']),
             'agregado_por' => $request->user()->id,
-        ]);
+        ], $data['proveedor_id'] ?? null);
+
+        $gasto = Gasto::create($gastoData);
 
         return response()->json($gasto->load('proveedor'), 201);
     }

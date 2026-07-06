@@ -58,4 +58,21 @@ class Gasto extends Model
     {
         return $query->where('factura_pendiente', true);
     }
+
+    /**
+     * Un proveedor con factura_nominal = false es informal: nunca emite
+     * factura, así que numero_factura se fuerza a "N/A" y no queda
+     * pendiente, sin importar lo que se haya escrito en el formulario.
+     */
+    public static function normalizarFacturaPorProveedor(array $data, ?int $proveedorId): array
+    {
+        $proveedor = $proveedorId ? Proveedor::find($proveedorId) : null;
+
+        if ($proveedor && ! $proveedor->factura_nominal) {
+            $data['numero_factura'] = 'N/A';
+            $data['factura_pendiente'] = false;
+        }
+
+        return $data;
+    }
 }

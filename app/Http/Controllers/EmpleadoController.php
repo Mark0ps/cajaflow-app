@@ -29,7 +29,9 @@ class EmpleadoController extends Controller
             $query->whereIn('cargo', $cargos);
         }
 
-        $campos = $verTodos ? ['id', 'nombre', 'apellido', 'cargo', 'activo'] : ['id', 'nombre', 'apellido', 'cargo'];
+        $campos = $verTodos
+            ? ['id', 'nombre', 'apellido', 'identidad', 'cargo', 'sueldo_quincenal', 'activo']
+            : ['id', 'nombre', 'apellido', 'cargo'];
 
         return $query->orderBy('nombre')->get($campos);
     }

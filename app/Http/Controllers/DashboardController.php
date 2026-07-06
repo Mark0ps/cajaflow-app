@@ -43,10 +43,14 @@ class DashboardController extends Controller
             $fecha = sprintf('%04d-%02d-%02d', $data['anio'], $data['mes'], $dia);
             $fila = $filas->get($fecha);
 
+            $totalIngreso = round((float) ($fila->total_ingreso ?? 0), 2);
+            $totalGastos = round((float) ($fila->total_gastos ?? 0), 2);
+
             $dias[] = [
                 'fecha' => $fecha,
-                'total_ingreso' => round((float) ($fila->total_ingreso ?? 0), 2),
-                'total_gastos' => round((float) ($fila->total_gastos ?? 0), 2),
+                'total_ingreso' => $totalIngreso,
+                'total_gastos' => $totalGastos,
+                'total_venta' => round($totalIngreso + $totalGastos, 2),
                 'diferencia' => round((float) ($fila->diferencia ?? 0), 2),
                 'tiene_cierres' => (bool) ($fila->cierres ?? 0),
             ];
@@ -67,6 +71,10 @@ class DashboardController extends Controller
             ->with(['cajero:id,name', 'empleadosTurno:id,nombre,apellido', 'gastos.proveedor', 'vales.empleado'])
             ->orderBy('turno')
             ->get();
+
+        $cierres->each(function (CierreCaja $cierre) {
+            $cierre->total_venta = round((float) $cierre->total_ingreso + (float) $cierre->total_gastos, 2);
+        });
 
         return response()->json($cierres);
     }

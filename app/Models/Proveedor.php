@@ -12,10 +12,11 @@ class Proveedor extends Model
 
     protected $table = 'proveedores';
 
-    protected $fillable = ['nombre', 'activo'];
+    protected $fillable = ['nombre', 'contacto_nombre', 'telefono', 'direccion', 'descripcion', 'activo', 'factura_nominal'];
 
     protected $casts = [
         'activo' => 'boolean',
+        'factura_nominal' => 'boolean',
     ];
 
     public function gastos(): HasMany

@@ -10,6 +10,7 @@ use App\Models\CierreCaja;
 use App\Models\Vale;
 use App\Services\CierreCajaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
@@ -62,6 +63,10 @@ class ValeController extends Controller
         $this->authorize('update', $cierre);
         $this->verificarPertenencia($cierre, $vale);
 
+        if ($this->manejarValeAplicado($request, $vale)) {
+            return response()->noContent();
+        }
+
         $this->service->eliminarVale($cierre, $vale, $request->user(), $request->input('motivo'));
 
         return response()->noContent();
@@ -112,7 +117,10 @@ class ValeController extends Controller
     {
         abort_unless($request->user()->isAdmin(), 403);
         $this->verificarLibre($vale);
-        $this->asegurarValeNoAplicadoLibre($vale);
+
+        if ($this->manejarValeAplicado($request, $vale)) {
+            return response()->noContent();
+        }
 
         if ($vale->comprobante_path) {
             Storage::disk('public')->delete($vale->comprobante_path);
@@ -121,6 +129,60 @@ class ValeController extends Controller
         $vale->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * Un vale ya `aplicado_en_planilla` está bloqueado por defecto (ver
+     * asegurarValeNoAplicado/asegurarValeNoAplicadoLibre), pero Admin puede
+     * forzar la eliminación si la planilla del detalle sigue en `borrador` y
+     * ese detalle todavía no tiene ningún pago aplicado — mismo criterio
+     * protector de siempre (nunca se toca algo ya pagado), solo que ahora se
+     * permite corregir el vale puntual sin el rodeo de quitar al empleado de
+     * la planilla. Requiere contraseña de Admin, igual que cerrar/eliminar
+     * planilla. Devuelve true si ya manejó la eliminación (forzada), false si
+     * el vale no está aplicado y el caller debe seguir su flujo normal.
+     */
+    private function manejarValeAplicado(Request $request, Vale $vale): bool
+    {
+        if (! $vale->aplicado_en_planilla) {
+            return false;
+        }
+
+        $detalle = $vale->planillaDetalle;
+        $puedeForzar = $request->user()->isAdmin()
+            && $detalle
+            && $detalle->planilla->estado === 'borrador'
+            && ! $detalle->pagosAplicados()->exists();
+
+        if (! $puedeForzar) {
+            throw ValidationException::withMessages([
+                'vale' => 'Este vale ya fue aplicado en una planilla. Quita al empleado de la planilla en borrador para liberarlo antes de modificarlo.',
+            ]);
+        }
+
+        $request->validate(['password' => ['required', 'string']]);
+
+        if (! Hash::check($request->input('password'), $request->user()->password)) {
+            throw ValidationException::withMessages([
+                'password' => 'Contraseña incorrecta.',
+            ]);
+        }
+
+        $cierre = $vale->cierreCaja;
+
+        if ($vale->comprobante_path) {
+            Storage::disk('public')->delete($vale->comprobante_path);
+        }
+
+        $vale->delete();
+        $detalle->recalcularTodo();
+
+        if ($cierre) {
+            $cierre->recalcularTotales();
+            $cierre->save();
+        }
+
+        return true;
     }
 
     private function verificarLibre(Vale $vale): void

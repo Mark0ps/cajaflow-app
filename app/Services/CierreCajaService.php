@@ -89,8 +89,10 @@ class CierreCajaService
     {
         $this->autorizarEdicion($cierre, $agregadoPor, $motivo);
 
-        $gasto = $cierre->gastos()->create([
-            'proveedor_id' => $data['proveedor_id'] ?? null,
+        $proveedorId = $data['proveedor_id'] ?? null;
+
+        $gastoData = Gasto::normalizarFacturaPorProveedor([
+            'proveedor_id' => $proveedorId,
             'proveedor_nombre_libre' => $data['proveedor_nombre_libre'] ?? null,
             'descripcion' => $data['descripcion'] ?? null,
             'numero_factura' => $data['numero_factura'] ?? null,
@@ -101,7 +103,9 @@ class CierreCajaService
             'valor' => $data['valor'],
             'es_externo' => false,
             'agregado_por' => $agregadoPor->id,
-        ]);
+        ], $proveedorId);
+
+        $gasto = $cierre->gastos()->create($gastoData);
 
         $cierre->recalcularTotales();
         $cierre->save();
@@ -120,6 +124,9 @@ class CierreCajaService
         if (array_key_exists('numero_factura', $data)) {
             $data['factura_pendiente'] = empty($data['numero_factura']);
         }
+
+        $proveedorId = array_key_exists('proveedor_id', $data) ? $data['proveedor_id'] : $gasto->proveedor_id;
+        $data = Gasto::normalizarFacturaPorProveedor($data, $proveedorId);
 
         $gasto->update($data);
 

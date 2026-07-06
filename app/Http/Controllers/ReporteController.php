@@ -82,27 +82,46 @@ class ReporteController extends Controller
         ]);
     }
 
-    /** Totales de ingresos contra gastos (de caja y externos) del período. */
+    /**
+     * Totales de ingresos contra gastos (de caja y externos) del período.
+     * Filtro opcional `factura_nominal` (con/sin) sobre proveedor.factura_nominal:
+     * "sin" incluye tanto proveedores informales del catálogo como gastos con
+     * proveedor de texto libre (nunca tienen ese dato en el catálogo).
+     */
     public function gastosVsIngresos(Request $request)
     {
         $this->autorizar($request);
-        $data = $this->validarRango($request);
+        $data = $this->validarRango($request, [
+            'factura_nominal' => ['nullable', Rule::in(['con', 'sin'])],
+        ]);
 
-        $caja = CierreCaja::query()
-            ->selectRaw('SUM(total_ingreso) as total_ingresos')
-            ->selectRaw('SUM(total_gastos) as total_gastos')
+        $filtro = $data['factura_nominal'] ?? null;
+        $filtrarProveedor = function ($query) use ($filtro) {
+            if ($filtro === 'con') {
+                $query->whereHas('proveedor', fn ($q) => $q->where('factura_nominal', true));
+            } elseif ($filtro === 'sin') {
+                $query->where(function ($q) {
+                    $q->whereNull('proveedor_id')->orWhereHas('proveedor', fn ($p) => $p->where('factura_nominal', false));
+                });
+            }
+        };
+
+        $totalIngresos = round((float) CierreCaja::query()
             ->whereBetween('fecha', [$data['desde'], $data['hasta']])
-            ->first();
+            ->sum('total_ingreso'), 2);
+
+        $totalGastosCaja = round((float) Gasto::query()
+            ->where('es_externo', false)
+            ->whereHas('cierreCaja', fn ($q) => $q->whereBetween('fecha', [$data['desde'], $data['hasta']]))
+            ->tap($filtrarProveedor)
+            ->sum('valor'), 2);
 
         // Los gastos externos no tienen fecha propia: se usa su fecha de registro.
-        $externos = Gasto::query()
+        $totalGastosExternos = round((float) Gasto::query()
             ->where('es_externo', true)
             ->whereBetween('created_at', [$data['desde'].' 00:00:00', $data['hasta'].' 23:59:59'])
-            ->sum('valor');
-
-        $totalIngresos = round((float) ($caja->total_ingresos ?? 0), 2);
-        $totalGastosCaja = round((float) ($caja->total_gastos ?? 0), 2);
-        $totalGastosExternos = round((float) $externos, 2);
+            ->tap($filtrarProveedor)
+            ->sum('valor'), 2);
 
         return response()->json([
             'total_ingresos' => $totalIngresos,

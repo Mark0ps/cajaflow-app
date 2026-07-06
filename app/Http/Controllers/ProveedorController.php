@@ -5,15 +5,28 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ProveedorRequest;
 use App\Models\Proveedor;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ProveedorController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Proveedor::query()->activos();
+        // `todos=1` (solo Admin) incluye inactivos — lo usa la pantalla de
+        // gestión de Proveedores. El resto de la app (typeahead de gastos)
+        // sigue viendo solo activos vía `q`, sin cambios.
+        $verTodos = $request->boolean('todos') && $request->user()->isAdmin();
+
+        $query = Proveedor::query();
+
+        if (! $verTodos) {
+            $query->activos();
+        }
 
         if ($request->filled('q')) {
-            $query->where('nombre', 'like', '%' . $request->string('q') . '%');
+            $q = $request->string('q');
+            $query->where(fn ($sub) => $sub
+                ->where('nombre', 'like', "%{$q}%")
+                ->orWhere('descripcion', 'like', "%{$q}%"));
         }
 
         return $query->orderBy('nombre')->get();
@@ -40,9 +53,16 @@ class ProveedorController extends Controller
     {
         $this->authorize('delete', $proveedor);
 
-        // Baja lógica en vez de borrar — no queremos perder el historial de
-        // gastos que ya referencian a este proveedor.
-        $proveedor->update(['activo' => false]);
+        // Igual que Empleados: si ya tiene gastos asociados, no se borra de
+        // verdad (se perdería trazabilidad) — se bloquea y se sugiere
+        // desactivar. Solo se borra real si nunca tuvo historial.
+        if ($proveedor->gastos()->exists()) {
+            throw ValidationException::withMessages([
+                'proveedor' => 'No se puede eliminar: este proveedor ya tiene gastos registrados. Desactívalo en su lugar.',
+            ]);
+        }
+
+        $proveedor->delete();
 
         return response()->noContent();
     }
