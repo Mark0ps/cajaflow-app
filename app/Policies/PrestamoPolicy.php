@@ -30,4 +30,9 @@ class PrestamoPolicy
     {
         return $user->isAdmin();
     }
+
+    public function delete(User $user, Prestamo $prestamo): bool
+    {
+        return $user->isAdmin();
+    }
 }

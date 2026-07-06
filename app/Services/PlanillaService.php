@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CompraTienda;
 use App\Models\Empleado;
+use App\Models\Historial;
 use App\Models\LlegadaTarde;
 use App\Models\Planilla;
 use App\Models\PlanillaDetalle;
@@ -102,7 +103,7 @@ class PlanillaService
     {
         $vales = Vale::where('empleado_id', $empleado->id)
             ->where('aplicado_en_planilla', false)
-            ->whereHas('cierreCaja', fn ($q) => $q->whereBetween('fecha', [$inicio, $fin]))
+            ->whereBetween('fecha_emision', [$inicio, $fin])
             ->get();
 
         $vales->each(fn (Vale $v) => $v->update(['aplicado_en_planilla' => true, 'planilla_detalle_id' => $detalle->id]));
@@ -157,6 +158,43 @@ class PlanillaService
         return $monto;
     }
 
+    /**
+     * Vuelve a barrer vales/compras/llegadas tarde pendientes de un detalle
+     * ya existente y recalcula sus totales. Idempotente: aplicarVales() /
+     * aplicarComprasTienda() / aplicarLlegadasTarde() solo tocan registros
+     * sueltos (aplicado_en_planilla = false / planilla_detalle_id = null),
+     * así que no duplica lo ya aplicado en la generación original ni en una
+     * corrida previa de este mismo método.
+     *
+     * Corrige el bug donde algo agregado DESPUÉS de generar la planilla
+     * (ej. un vale con fecha dentro del período) nunca se reflejaba.
+     */
+    public function actualizarDeducciones(PlanillaDetalle $detalle): PlanillaDetalle
+    {
+        return DB::transaction(function () use ($detalle) {
+            $detalle->loadMissing('empleado', 'planilla');
+            [$periodoInicio, $periodoFin] = $this->calcularPeriodo(
+                $detalle->planilla->anio, $detalle->planilla->mes, $detalle->planilla->quincena
+            );
+
+            $this->aplicarVales($detalle->empleado, $detalle, $periodoInicio, $periodoFin);
+            $this->aplicarComprasTienda($detalle->empleado, $detalle, $periodoInicio, $periodoFin);
+            $this->aplicarLlegadasTarde($detalle->empleado, $detalle, $periodoInicio, $periodoFin);
+
+            $detalle->recalcularTodo();
+
+            return $detalle->fresh(['empleado', 'vales', 'comprasTienda', 'llegadasTarde', 'prestamoAbonos.prestamo']);
+        });
+    }
+
+    /** Aplica actualizarDeducciones() a todos los detalles de una planilla en borrador. */
+    public function actualizarDeduccionesPlanilla(Planilla $planilla): void
+    {
+        $planilla->loadMissing('detalles');
+
+        $planilla->detalles->each(fn (PlanillaDetalle $detalle) => $this->actualizarDeducciones($detalle));
+    }
+
     private function calcularPeriodo(int $anio, int $mes, int $quincena): array
     {
         if ($quincena === 1) {
@@ -177,6 +215,48 @@ class PlanillaService
         }
 
         $planilla->update(['estado' => 'cerrada', 'cerrada_en' => now()]);
+
+        return $planilla;
+    }
+
+    /**
+     * Reabre una planilla cerrada (vuelve a borrador), para poder corregirla
+     * o eliminarla si se cerró por accidente. Rechaza si algún detalle ya
+     * tiene un pago registrado (no tiene sentido reabrir algo ya pagado).
+     * Deja rastro en `historial` con el motivo dado por el admin.
+     */
+    public function reabrir(Planilla $planilla, User $user, string $motivo): Planilla
+    {
+        if ($planilla->estado !== 'cerrada') {
+            throw ValidationException::withMessages([
+                'estado' => 'Solo se puede reabrir una planilla cerrada.',
+            ]);
+        }
+
+        $detalles = $planilla->detalles()->with('empleado')->get();
+        $empleadosConPago = $detalles->filter(fn (PlanillaDetalle $d) => $d->pagosAplicados()->exists());
+
+        if ($empleadosConPago->isNotEmpty()) {
+            $nombres = $empleadosConPago->map(fn (PlanillaDetalle $d) => $d->empleado->nombreCompleto())->implode(', ');
+
+            throw ValidationException::withMessages([
+                'planilla' => "No se puede reabrir: ya hay pagos registrados para: {$nombres}.",
+            ]);
+        }
+
+        $datosAntes = $planilla->toArray();
+
+        $planilla->update(['estado' => 'borrador', 'cerrada_en' => null]);
+
+        Historial::create([
+            'tabla' => 'planillas',
+            'registro_id' => $planilla->id,
+            'accion' => 'reabierta',
+            'user_id' => $user->id,
+            'motivo' => $motivo,
+            'datos_antes' => $datosAntes,
+            'datos_despues' => $planilla->fresh()->toArray(),
+        ]);
 
         return $planilla;
     }

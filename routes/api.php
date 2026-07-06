@@ -23,6 +23,7 @@ use App\Http\Controllers\PlanillaDetalleComprasController;
 use App\Http\Controllers\PlanillaDetalleLlegadasController;
 use App\Http\Controllers\PlanillaDetallePrestamoController;
 use App\Http\Controllers\PrestamoController;
+use App\Http\Controllers\UsuarioController;
 
 Route::post('login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 
@@ -34,6 +35,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Empleados
     Route::get('empleados', [EmpleadoController::class, 'index']);
     Route::get('empleados/{empleado}', [EmpleadoController::class, 'show']);
+    Route::post('empleados', [EmpleadoController::class, 'store']);
+    Route::patch('empleados/{empleado}', [EmpleadoController::class, 'update']);
+    Route::delete('empleados/{empleado}', [EmpleadoController::class, 'destroy']);
+
+    // Usuarios (nunca se elimina, solo se desactiva)
+    Route::get('usuarios', [UsuarioController::class, 'index']);
+    Route::post('usuarios', [UsuarioController::class, 'store']);
+    Route::patch('usuarios/{usuario}', [UsuarioController::class, 'update']);
+    Route::post('usuarios/{usuario}/reset-password', [UsuarioController::class, 'resetPassword']);
 
     // Proveedores
     Route::get('proveedores', [ProveedorController::class, 'index']);
@@ -67,6 +77,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('cierres-caja/{cierre}/vales/{vale}', [ValeController::class, 'destroy']);
     Route::get('empleados/{empleado}/vales', [ValeController::class, 'porEmpleado']);
 
+    // Vale libre (sin turno de caja), solo Admin
+    Route::post('vales', [ValeController::class, 'storeLibre']);
+    Route::patch('vales/{vale}', [ValeController::class, 'updateLibre']);
+    Route::delete('vales/{vale}', [ValeController::class, 'destroyLibre']);
+
     // Movimientos de efectivo (entradas/salidas durante el turno, anidados bajo un cierre)
     Route::post('cierres-caja/{cierre}/movimientos', [MovimientoEfectivoController::class, 'store']);
     Route::patch('cierres-caja/{cierre}/movimientos/{movimiento}', [MovimientoEfectivoController::class, 'update']);
@@ -83,7 +98,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::patch('planillas/{planilla}', [PlanillaController::class, 'update']);
     Route::delete('planillas/{planilla}', [PlanillaController::class, 'destroy']);
     Route::post('planillas/{planilla}/cerrar', [PlanillaController::class, 'cerrar']);
+    Route::post('planillas/{planilla}/reabrir', [PlanillaController::class, 'reabrir']);
     Route::patch('planillas/{planilla}/detalles/{detalle}', [PlanillaController::class, 'actualizarDetalle']);
+    Route::post('planillas/{planilla}/detalles/{detalle}/actualizar-deducciones', [PlanillaController::class, 'actualizarDeducciones']);
 
     // Consumo interno (compras_tienda), anidado bajo el detalle de planilla
     Route::post('planillas/{planilla}/detalles/{detalle}/compras-tienda', [PlanillaDetalleComprasController::class, 'store']);
@@ -95,13 +112,25 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::patch('planillas/{planilla}/detalles/{detalle}/llegadas-tarde/{llegada}', [PlanillaDetalleLlegadasController::class, 'update']);
     Route::delete('planillas/{planilla}/detalles/{detalle}/llegadas-tarde/{llegada}', [PlanillaDetalleLlegadasController::class, 'destroy']);
 
+    // Compras/llegadas "sueltas" (planilla_detalle_id null): quedan así cuando
+    // se quita al empleado de una planilla en borrador o se elimina la
+    // planilla. Sin esto no había ninguna ruta que las alcanzara para
+    // corregirlas/eliminarlas (mismo hueco que resolvían los vales libres).
+    Route::patch('compras-tienda/{compra}', [PlanillaDetalleComprasController::class, 'updateSuelta']);
+    Route::delete('compras-tienda/{compra}', [PlanillaDetalleComprasController::class, 'destroySuelta']);
+    Route::patch('llegadas-tarde/{llegada}', [PlanillaDetalleLlegadasController::class, 'updateSuelta']);
+    Route::delete('llegadas-tarde/{llegada}', [PlanillaDetalleLlegadasController::class, 'destroySuelta']);
+
     // Abono de préstamo del detalle de planilla (edición del abono ya aplicado)
     Route::patch('planillas/{planilla}/detalles/{detalle}/abono-prestamo', [PlanillaDetallePrestamoController::class, 'update']);
 
     // Préstamos (anidados bajo empleado para listar, sueltos para crear/ver)
     Route::get('empleados/{empleado}/prestamos', [PrestamoController::class, 'index']);
+    Route::get('prestamos', [PrestamoController::class, 'listado']);
     Route::post('prestamos', [PrestamoController::class, 'store']);
     Route::get('prestamos/{prestamo}', [PrestamoController::class, 'show']);
+    Route::patch('prestamos/{prestamo}', [PrestamoController::class, 'update']);
+    Route::delete('prestamos/{prestamo}', [PrestamoController::class, 'destroy']);
 
     // Dashboard y reportes (solo admin/secretaria, validado en los controllers)
     Route::get('dashboard/resumen-mensual', [DashboardController::class, 'resumenMensual']);

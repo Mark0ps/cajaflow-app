@@ -36,4 +36,9 @@ class PlanillaPolicy
     {
         return $user->isAdmin() && $planilla->estado === 'borrador';
     }
+
+    public function reabrir(User $user, Planilla $planilla): bool
+    {
+        return $user->isAdmin() && $planilla->estado === 'cerrada';
+    }
 }

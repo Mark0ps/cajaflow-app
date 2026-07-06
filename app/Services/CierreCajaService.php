@@ -153,6 +153,8 @@ class CierreCajaService
             'empleado_id' => $data['empleado_id'],
             'monto' => $data['monto'],
             'descripcion' => $data['descripcion'] ?? null,
+            'fecha_emision' => $cierre->fecha,
+            'registrado_por' => $user->id,
         ]);
 
         $cierre->recalcularTotales();

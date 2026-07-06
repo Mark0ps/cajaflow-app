@@ -45,7 +45,20 @@ class PlanillaController extends Controller
     {
         $this->authorize('view', $planilla);
 
-        return $planilla->load('detalles.empleado', 'detalles.comprasTienda', 'detalles.llegadasTarde', 'detalles.prestamoAbonos.prestamo');
+        // Autocorrección silenciosa: si algo (vale/compra/llegada tarde) se
+        // agregó después de generar la planilla, se recoge aquí mismo antes
+        // de responder, mientras siga en borrador.
+        if ($planilla->estado === 'borrador') {
+            $this->service->actualizarDeduccionesPlanilla($planilla);
+        }
+
+        return $planilla->load(
+            'detalles.empleado',
+            'detalles.comprasTienda',
+            'detalles.llegadasTarde',
+            'detalles.prestamoAbonos.prestamo',
+            'detalles.vales.registradoPor:id,name'
+        );
     }
 
     /** Agrega/quita empleados de una planilla en borrador (empleado_ids nuevo). */
@@ -72,6 +85,17 @@ class PlanillaController extends Controller
         $this->service->eliminar($planilla);
 
         return response()->noContent();
+    }
+
+    public function reabrir(Request $request, Planilla $planilla)
+    {
+        $this->authorize('reabrir', $planilla);
+        $this->verificarPassword($request);
+        $request->validate(['motivo' => ['required', 'string', 'max:500']]);
+
+        $planilla = $this->service->reabrir($planilla, $request->user(), $request->input('motivo'));
+
+        return response()->json($planilla);
     }
 
     /** Confirmación de contraseña del admin, mismo patrón que verificar-admin. */
@@ -127,5 +151,19 @@ class PlanillaController extends Controller
             'detalle' => $detalle->fresh(['comprasTienda', 'llegadasTarde', 'prestamoAbonos.prestamo']),
             'tarifa_sugerida' => round((float) $detalle->sueldo_diario / 8 * 1.5, 2),
         ]);
+    }
+
+    /** Botón manual "Actualizar deducciones": mismo recálculo que corre automático en show(). */
+    public function actualizarDeducciones(Planilla $planilla, PlanillaDetalle $detalle)
+    {
+        $this->authorize('update', $planilla);
+
+        if ($detalle->planilla_id !== $planilla->id) {
+            throw ValidationException::withMessages([
+                'detalle' => 'Este detalle no pertenece a la planilla indicada.',
+            ]);
+        }
+
+        return response()->json(['detalle' => $this->service->actualizarDeducciones($detalle)]);
     }
 }

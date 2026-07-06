@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ActualizarValeLibreRequest;
 use App\Http\Requests\ActualizarValeRequest;
+use App\Http\Requests\ValeLibreRequest;
 use App\Http\Requests\ValeRequest;
 use App\Models\CierreCaja;
 use App\Models\Vale;
 use App\Services\CierreCajaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class ValeController extends Controller
@@ -62,6 +65,80 @@ class ValeController extends Controller
         $this->service->eliminarVale($cierre, $vale, $request->user(), $request->input('motivo'));
 
         return response()->noContent();
+    }
+
+    /**
+     * Vale libre: no depende de un turno de caja. Solo Admin, para poder
+     * adelantarle dinero a un empleado sin necesidad de un cierre abierto.
+     */
+    public function storeLibre(ValeLibreRequest $request)
+    {
+        $comprobantePath = $request->hasFile('comprobante')
+            ? $request->file('comprobante')->store('comprobantes-vales', 'public')
+            : null;
+
+        $vale = Vale::create([
+            'empleado_id' => $request->validated('empleado_id'),
+            'monto' => $request->validated('monto'),
+            'descripcion' => $request->validated('descripcion'),
+            'fecha_emision' => $request->validated('fecha_emision'),
+            'comprobante_path' => $comprobantePath,
+            'registrado_por' => $request->user()->id,
+        ]);
+
+        return response()->json($vale->load('empleado:id,nombre,apellido'), 201);
+    }
+
+    public function updateLibre(ActualizarValeLibreRequest $request, Vale $vale)
+    {
+        $this->verificarLibre($vale);
+        $this->asegurarValeNoAplicadoLibre($vale);
+
+        $data = $request->safe()->except('comprobante');
+
+        if ($request->hasFile('comprobante')) {
+            if ($vale->comprobante_path) {
+                Storage::disk('public')->delete($vale->comprobante_path);
+            }
+            $data['comprobante_path'] = $request->file('comprobante')->store('comprobantes-vales', 'public');
+        }
+
+        $vale->update($data);
+
+        return response()->json($vale->fresh('empleado:id,nombre,apellido'));
+    }
+
+    public function destroyLibre(Request $request, Vale $vale)
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+        $this->verificarLibre($vale);
+        $this->asegurarValeNoAplicadoLibre($vale);
+
+        if ($vale->comprobante_path) {
+            Storage::disk('public')->delete($vale->comprobante_path);
+        }
+
+        $vale->delete();
+
+        return response()->noContent();
+    }
+
+    private function verificarLibre(Vale $vale): void
+    {
+        if ($vale->cierre_caja_id !== null) {
+            throw ValidationException::withMessages([
+                'vale' => 'Este vale pertenece a un turno de caja; edítalo desde el cierre correspondiente.',
+            ]);
+        }
+    }
+
+    private function asegurarValeNoAplicadoLibre(Vale $vale): void
+    {
+        if ($vale->aplicado_en_planilla) {
+            throw ValidationException::withMessages([
+                'vale' => 'Este vale ya fue aplicado en una planilla. Quita al empleado de la planilla en borrador para liberarlo antes de modificarlo.',
+            ]);
+        }
     }
 
     /** Vales de un empleado en un rango — insumo para el reporte "vales por empleado". */
