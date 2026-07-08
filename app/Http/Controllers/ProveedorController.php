@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ProveedorRequest;
+use App\Models\Gasto;
 use App\Models\Proveedor;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -65,5 +66,44 @@ class ProveedorController extends Controller
         $proveedor->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * Advertencia no bloqueante de posible factura duplicada: compara los
+     * últimos 6 caracteres del número recibido contra los gastos ya
+     * registrados para ESTE proveedor (nunca contra otros proveedores).
+     * Ignora "N/A" (proveedores sin factura nominal).
+     */
+    public function facturasSimilares(Request $request, Proveedor $proveedor)
+    {
+        $numero = trim((string) $request->query('numero', ''));
+
+        if ($numero === '' || strtoupper($numero) === 'N/A') {
+            return response()->json([]);
+        }
+
+        $sufijo = mb_strtoupper(mb_substr($numero, -6));
+
+        $coincidencias = Gasto::query()
+            ->where('proveedor_id', $proveedor->id)
+            ->whereNotNull('numero_factura')
+            ->where('numero_factura', '!=', 'N/A')
+            ->whereRaw('UPPER(RIGHT(numero_factura, 6)) = ?', [$sufijo])
+            ->when(
+                $request->filled('excluir_id'),
+                fn ($query) => $query->where('id', '!=', $request->integer('excluir_id'))
+            )
+            ->with('cierreCaja:id,fecha')
+            ->latest()
+            ->limit(5)
+            ->get()
+            ->map(fn (Gasto $gasto) => [
+                'id' => $gasto->id,
+                'numero_factura' => $gasto->numero_factura,
+                'valor' => $gasto->valor,
+                'fecha' => $gasto->cierreCaja?->fecha ?? $gasto->created_at->toDateString(),
+            ]);
+
+        return response()->json($coincidencias);
     }
 }

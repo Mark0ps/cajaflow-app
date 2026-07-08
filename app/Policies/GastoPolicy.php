@@ -62,4 +62,19 @@ class GastoPolicy
             && $gasto->cierreCaja->user_id === $user->id
             && $gasto->cierreCaja->estado === 'abierto';
     }
+
+    /**
+     * Editar/eliminar un gasto externo (sin cierre asociado, presupuesto
+     * empresarial) — mismo alcance que crearlo: Admin y Secretaria, sin
+     * contraseña ni restricción de estado (no hay cierre que bloquee esto).
+     */
+    public function editarExterno(User $user, Gasto $gasto): bool
+    {
+        return $user->isAdmin() || $user->isSecretaria();
+    }
+
+    public function eliminarExterno(User $user, Gasto $gasto): bool
+    {
+        return $user->isAdmin() || $user->isSecretaria();
+    }
 }

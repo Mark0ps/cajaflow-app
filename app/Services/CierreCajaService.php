@@ -20,9 +20,21 @@ class CierreCajaService
      * Abre un turno de caja. Un cajero solo puede tener un cierre abierto
      * a la vez para (fecha, turno) — lo impide el unique de la migración,
      * pero validamos antes para dar un mensaje claro en vez de un 500.
+     *
+     * $solicitante es siempre el usuario autenticado que hace la petición.
+     * Si es Admin y viene `user_id` en $data, el turno se abre a nombre de
+     * ese cajero. Si quien pide NO es Admin, cualquier `user_id` recibido se
+     * ignora por completo y el turno siempre queda a su propio nombre — no
+     * se confía en el valor que mande el cliente.
      */
-    public function abrirTurno(User $cajero, array $data): CierreCaja
+    public function abrirTurno(User $solicitante, array $data): CierreCaja
     {
+        $cajero = $solicitante;
+
+        if ($solicitante->isAdmin() && ! empty($data['user_id'])) {
+            $cajero = User::findOrFail($data['user_id']);
+        }
+
         $existe = CierreCaja::where('fecha', $data['fecha'])
             ->where('turno', $data['turno'])
             ->where('user_id', $cajero->id)
@@ -94,6 +106,9 @@ class CierreCajaService
         $gastoData = Gasto::normalizarFacturaPorProveedor([
             'proveedor_id' => $proveedorId,
             'proveedor_nombre_libre' => $data['proveedor_nombre_libre'] ?? null,
+            // Autocompletado con la fecha del cierre — no se expone en el
+            // formulario de Caja Diaria, ya está implícito en el turno.
+            'fecha_emision' => $cierre->fecha,
             'descripcion' => $data['descripcion'] ?? null,
             'numero_factura' => $data['numero_factura'] ?? null,
             'factura_pendiente' => empty($data['numero_factura']),

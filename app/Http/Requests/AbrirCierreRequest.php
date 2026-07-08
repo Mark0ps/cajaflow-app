@@ -17,6 +17,10 @@ class AbrirCierreRequest extends FormRequest
             'fecha' => ['required', 'date', 'before_or_equal:today'],
             'turno' => ['required', 'in:matutino,tarde,nocturno'],
             'monto_inicial' => ['required', 'numeric', 'min:0'],
+            // Solo Admin puede abrir a nombre de otro cajero — la verificación
+            // real (ignorar esto si quien pide no es Admin) vive en
+            // CierreCajaService::abrirTurno(), nunca confiar solo en el Request.
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
         ];
     }
 }

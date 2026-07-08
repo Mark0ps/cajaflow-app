@@ -87,12 +87,14 @@ class ReporteController extends Controller
      * Filtro opcional `factura_nominal` (con/sin) sobre proveedor.factura_nominal:
      * "sin" incluye tanto proveedores informales del catálogo como gastos con
      * proveedor de texto libre (nunca tienen ese dato en el catálogo).
+     * Filtro opcional `categoria` sobre gastos.categoria.
      */
     public function gastosVsIngresos(Request $request)
     {
         $this->autorizar($request);
         $data = $this->validarRango($request, [
             'factura_nominal' => ['nullable', Rule::in(['con', 'sin'])],
+            'categoria' => ['nullable', Rule::in(['gasto_operativo', 'pago_tarjeta_credito'])],
         ]);
 
         $filtro = $data['factura_nominal'] ?? null;
@@ -106,6 +108,13 @@ class ReporteController extends Controller
             }
         };
 
+        $filtroCategoria = $data['categoria'] ?? null;
+        $filtrarCategoria = function ($query) use ($filtroCategoria) {
+            if ($filtroCategoria) {
+                $query->where('categoria', $filtroCategoria);
+            }
+        };
+
         $totalIngresos = round((float) CierreCaja::query()
             ->whereBetween('fecha', [$data['desde'], $data['hasta']])
             ->sum('total_ingreso'), 2);
@@ -114,6 +123,7 @@ class ReporteController extends Controller
             ->where('es_externo', false)
             ->whereHas('cierreCaja', fn ($q) => $q->whereBetween('fecha', [$data['desde'], $data['hasta']]))
             ->tap($filtrarProveedor)
+            ->tap($filtrarCategoria)
             ->sum('valor'), 2);
 
         // Los gastos externos no tienen fecha propia: se usa su fecha de registro.
@@ -121,6 +131,15 @@ class ReporteController extends Controller
             ->where('es_externo', true)
             ->whereBetween('created_at', [$data['desde'].' 00:00:00', $data['hasta'].' 23:59:59'])
             ->tap($filtrarProveedor)
+            ->tap($filtrarCategoria)
+            ->sum('valor'), 2);
+
+        // Independiente del filtro de categoría seleccionado: siempre muestra
+        // cuánto se reembolsó por tarjetas personales de admin en el período.
+        $totalPagoTarjetaCredito = round((float) Gasto::query()
+            ->where('es_externo', true)
+            ->where('categoria', 'pago_tarjeta_credito')
+            ->whereBetween('created_at', [$data['desde'].' 00:00:00', $data['hasta'].' 23:59:59'])
             ->sum('valor'), 2);
 
         return response()->json([
@@ -129,6 +148,7 @@ class ReporteController extends Controller
             'total_gastos_externos' => $totalGastosExternos,
             'total_gastos' => round($totalGastosCaja + $totalGastosExternos, 2),
             'balance' => round($totalIngresos - $totalGastosCaja - $totalGastosExternos, 2),
+            'total_pago_tarjeta_credito' => $totalPagoTarjetaCredito,
         ]);
     }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ActualizarFacturaRequest;
+use App\Http\Requests\ActualizarGastoExternoRequest;
 use App\Http\Requests\ActualizarGastoRequest;
 use App\Http\Requests\GastoExternoRequest;
 use App\Http\Requests\GastoRequest;
@@ -56,6 +57,43 @@ class GastoController extends Controller
             $query->where('proveedor_id', $request->integer('proveedor_id'));
         }
 
+        if ($request->filled('categoria')) {
+            $query->where('categoria', $request->input('categoria'));
+        }
+
+        if ($request->filled('tipo_pago')) {
+            $query->where('tipo_pago', $request->input('tipo_pago'));
+        }
+
+        if ($request->filled('agregado_por_rol')) {
+            $query->whereHas('agregadoPor', fn ($q) => $q->where('role', $request->input('agregado_por_rol')));
+        }
+
+        // fecha_emision es la fecha real del gasto (no created_at, que es
+        // cuándo se cargó al sistema) — tanto el rango libre como el
+        // selector rápido de mes/año filtran sobre esta.
+        if ($request->filled('mes') && $request->filled('anio')) {
+            $query->whereYear('fecha_emision', $request->integer('anio'))
+                ->whereMonth('fecha_emision', $request->integer('mes'));
+        }
+
+        if ($request->filled('fecha_desde')) {
+            $query->whereDate('fecha_emision', '>=', $request->date('fecha_desde'));
+        }
+
+        if ($request->filled('fecha_hasta')) {
+            $query->whereDate('fecha_emision', '<=', $request->date('fecha_hasta'));
+        }
+
+        if ($request->filled('q')) {
+            $q = $request->string('q');
+            $query->where(fn ($sub) => $sub
+                ->whereHas('proveedor', fn ($p) => $p->where('nombre', 'like', "%{$q}%"))
+                ->orWhere('proveedor_nombre_libre', 'like', "%{$q}%")
+                ->orWhere('descripcion', 'like', "%{$q}%")
+                ->orWhere('numero_factura', 'like', "%{$q}%"));
+        }
+
         return $query->latest()->paginate(20);
     }
 
@@ -84,12 +122,46 @@ class GastoController extends Controller
             'cierre_caja_id' => null,
             'es_externo' => true,
             'factura_pendiente' => empty($data['numero_factura']),
+            'categoria' => $data['categoria'] ?? 'gasto_operativo',
             'agregado_por' => $request->user()->id,
         ], $data['proveedor_id'] ?? null);
 
         $gasto = Gasto::create($gastoData);
 
         return response()->json($gasto->load('proveedor'), 201);
+    }
+
+    /** Editar un gasto externo (Admin/Secretaria) — sin cierre, sin contraseña. */
+    public function updateExterno(ActualizarGastoExternoRequest $request, Gasto $gasto)
+    {
+        if (! $gasto->es_externo) {
+            throw ValidationException::withMessages([
+                'gasto' => 'Este gasto no es un gasto externo.',
+            ]);
+        }
+
+        $data = $request->validated();
+        $proveedorId = array_key_exists('proveedor_id', $data) ? $data['proveedor_id'] : $gasto->proveedor_id;
+
+        $gasto->update(Gasto::normalizarFacturaPorProveedor($data, $proveedorId));
+
+        return response()->json($gasto->fresh('proveedor'));
+    }
+
+    /** Eliminar un gasto externo (Admin/Secretaria) — sin cierre, sin contraseña. */
+    public function destroyExterno(Gasto $gasto)
+    {
+        $this->authorize('eliminarExterno', $gasto);
+
+        if (! $gasto->es_externo) {
+            throw ValidationException::withMessages([
+                'gasto' => 'Este gasto no es un gasto externo.',
+            ]);
+        }
+
+        $gasto->delete();
+
+        return response()->noContent();
     }
 
     /** Secretaria/Admin completan un N° de factura que quedó pendiente. */

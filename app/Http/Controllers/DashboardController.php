@@ -76,7 +76,14 @@ class DashboardController extends Controller
             $cierre->total_venta = round((float) $cierre->total_ingreso + (float) $cierre->total_gastos, 2);
         });
 
-        return response()->json($cierres);
+        return response()->json([
+            'resumen' => [
+                'total_venta' => round((float) $cierres->sum('total_venta'), 2),
+                'total_efectivo' => round((float) $cierres->sum('efectivo'), 2),
+                
+            ],
+            'cierres' => $cierres,
+        ]);
     }
 
     private function autorizar(Request $request): void

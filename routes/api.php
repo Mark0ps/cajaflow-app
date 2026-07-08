@@ -48,6 +48,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Proveedores
     Route::get('proveedores', [ProveedorController::class, 'index']);
     Route::post('proveedores', [ProveedorController::class, 'store']);
+    Route::get('proveedores/{proveedor}/facturas-similares', [ProveedorController::class, 'facturasSimilares']);
     Route::put('proveedores/{proveedor}', [ProveedorController::class, 'update']);
     Route::delete('proveedores/{proveedor}', [ProveedorController::class, 'destroy']);
 
@@ -70,6 +71,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('gastos', [GastoController::class, 'index']);
     Route::post('gastos/externos', [GastoController::class, 'storeExterno']);
     Route::patch('gastos/{gasto}/factura', [GastoController::class, 'actualizarFactura']);
+    Route::patch('gastos/{gasto}', [GastoController::class, 'updateExterno']);
+    Route::delete('gastos/{gasto}', [GastoController::class, 'destroyExterno']);
 
     // Vales (anidados bajo un cierre)
     Route::post('cierres-caja/{cierre}/vales', [ValeController::class, 'store']);

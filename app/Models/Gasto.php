@@ -14,16 +14,19 @@ class Gasto extends Model
         'cierre_caja_id',
         'proveedor_id',
         'proveedor_nombre_libre',
+        'fecha_emision',
         'descripcion',
         'numero_factura',
         'factura_pendiente',
         'tipo_pago',
         'valor',
         'es_externo',
+        'categoria',
         'agregado_por',
     ];
 
     protected $casts = [
+        'fecha_emision' => 'date',
         'factura_pendiente' => 'boolean',
         'es_externo' => 'boolean',
         'valor' => 'decimal:2',
