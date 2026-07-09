@@ -36,6 +36,25 @@ class UsuarioController extends Controller
     {
         abort_unless($request->user()->isAdmin(), 403);
 
+        // Anti auto-bloqueo: un admin no puede desactivarse ni quitarse el
+        // rol a sí mismo — quedaría fuera del sistema (o sin módulo de
+        // Usuarios) en el mismo request. Otro admin sí puede hacerlo.
+        if ($usuario->id === $request->user()->id) {
+            $data = $request->validated();
+
+            if (array_key_exists('activo', $data) && ! $data['activo']) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'activo' => 'No puedes desactivar tu propio usuario.',
+                ]);
+            }
+
+            if (array_key_exists('role', $data) && $data['role'] !== 'admin') {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'role' => 'No puedes quitarte el rol de administrador a ti mismo.',
+                ]);
+            }
+        }
+
         $usuario->update($request->validated());
 
         return response()->json($usuario->fresh()->load('empleado:id,nombre,apellido'));
