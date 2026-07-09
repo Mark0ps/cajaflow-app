@@ -7,6 +7,7 @@ use App\Http\Requests\ActualizarValeRequest;
 use App\Http\Requests\ValeLibreRequest;
 use App\Http\Requests\ValeRequest;
 use App\Models\CierreCaja;
+use App\Models\Historial;
 use App\Models\Vale;
 use App\Services\CierreCajaService;
 use Illuminate\Http\Request;
@@ -33,6 +34,32 @@ class ValeController extends Controller
                 'vale' => 'Este vale no pertenece al cierre indicado.',
             ]);
         }
+    }
+
+    /**
+     * Historial mensual de vales (turno + libres) para la vista de
+     * supervisión en "Asignar vale". Solo Admin — expone adelantos de sueldo
+     * de todos los empleados.
+     */
+    public function index(Request $request)
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $request->validate([
+            'anio' => ['required', 'integer', 'min:2020', 'max:2100'],
+            'mes' => ['required', 'integer', 'min:1', 'max:12'],
+            'empleado_id' => ['nullable', 'integer', 'exists:empleados,id'],
+        ]);
+
+        $vales = Vale::whereYear('fecha_emision', $request->integer('anio'))
+            ->whereMonth('fecha_emision', $request->integer('mes'))
+            ->when($request->filled('empleado_id'), fn ($q) => $q->where('empleado_id', $request->integer('empleado_id')))
+            ->with(['empleado:id,nombre,apellido', 'registradoPor:id,name', 'cierreCaja:id,fecha,turno'])
+            ->orderByDesc('fecha_emision')
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json($vales);
     }
 
     public function store(ValeRequest $request, CierreCaja $cierre)
@@ -99,7 +126,8 @@ class ValeController extends Controller
         $this->verificarLibre($vale);
         $this->asegurarValeNoAplicadoLibre($vale);
 
-        $data = $request->safe()->except('comprobante');
+        $antes = $vale->toArray();
+        $data = $request->safe()->except(['comprobante', 'motivo']);
 
         if ($request->hasFile('comprobante')) {
             if ($vale->comprobante_path) {
@@ -109,6 +137,20 @@ class ValeController extends Controller
         }
 
         $vale->update($data);
+
+        // A diferencia de los vales de turno (donde el motivo solo aplica con
+        // el cierre ya cerrado), un vale libre siempre se corrige "en frío"
+        // desde el historial de Asignar vale — el motivo es obligatorio y
+        // queda en historial, es una vista de supervisión.
+        Historial::create([
+            'tabla' => 'vales',
+            'registro_id' => $vale->id,
+            'accion' => 'editado',
+            'user_id' => $request->user()->id,
+            'motivo' => $request->validated('motivo'),
+            'datos_antes' => $antes,
+            'datos_despues' => $vale->fresh()->toArray(),
+        ]);
 
         return response()->json($vale->fresh('empleado:id,nombre,apellido'));
     }
@@ -122,11 +164,27 @@ class ValeController extends Controller
             return response()->noContent();
         }
 
+        // Mismo criterio que updateLibre: eliminar desde el historial de
+        // supervisión siempre exige justificación y deja rastro.
+        $request->validate(['motivo' => ['required', 'string', 'max:500']]);
+
+        $antes = $vale->toArray();
+
         if ($vale->comprobante_path) {
             Storage::disk('public')->delete($vale->comprobante_path);
         }
 
         $vale->delete();
+
+        Historial::create([
+            'tabla' => 'vales',
+            'registro_id' => $antes['id'],
+            'accion' => 'eliminado',
+            'user_id' => $request->user()->id,
+            'motivo' => $request->input('motivo'),
+            'datos_antes' => $antes,
+            'datos_despues' => [],
+        ]);
 
         return response()->noContent();
     }

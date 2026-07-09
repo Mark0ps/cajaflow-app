@@ -19,6 +19,10 @@ class ActualizarValeLibreRequest extends FormRequest
             'descripcion' => ['sometimes', 'nullable', 'string', 'max:255'],
             'fecha_emision' => ['sometimes', 'date', 'before_or_equal:today'],
             'comprobante' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:8192'],
+            // Editar un vale libre siempre ocurre desde el historial de
+            // supervisión de "Asignar vale" — justificación obligatoria,
+            // queda registrada en `historial`.
+            'motivo' => ['required', 'string', 'max:500'],
         ];
     }
 }

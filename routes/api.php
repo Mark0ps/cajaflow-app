@@ -80,6 +80,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('cierres-caja/{cierre}/vales/{vale}', [ValeController::class, 'destroy']);
     Route::get('empleados/{empleado}/vales', [ValeController::class, 'porEmpleado']);
 
+    // Historial mensual de vales (turno + libres) — vista de supervisión en
+    // "Asignar vale", solo Admin
+    Route::get('vales', [ValeController::class, 'index']);
+
     // Vale libre (sin turno de caja), solo Admin
     Route::post('vales', [ValeController::class, 'storeLibre']);
     Route::patch('vales/{vale}', [ValeController::class, 'updateLibre']);
