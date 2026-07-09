@@ -80,7 +80,8 @@ class DashboardController extends Controller
             'resumen' => [
                 'total_venta' => round((float) $cierres->sum('total_venta'), 2),
                 'total_efectivo' => round((float) $cierres->sum('efectivo'), 2),
-                
+                'total_tarjeta' => round((float) $cierres->sum('tarjeta_credito'), 2),
+                'total_transferencia' => round((float) $cierres->sum('transferencia'), 2),
             ],
             'cierres' => $cierres,
         ]);
