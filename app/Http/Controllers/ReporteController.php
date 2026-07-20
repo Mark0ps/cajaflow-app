@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CierreCaja;
 use App\Models\Gasto;
 use App\Models\Vale;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -94,7 +95,7 @@ class ReporteController extends Controller
         $this->autorizar($request);
         $data = $this->validarRango($request, [
             'factura_nominal' => ['nullable', Rule::in(['con', 'sin'])],
-            'categoria' => ['nullable', Rule::in(['gasto_operativo', 'pago_tarjeta_credito'])],
+            'categoria' => ['nullable', Rule::in(['gasto_operativo', 'pago_tarjeta_credito', 'servicios_publicos'])],
         ]);
 
         $filtro = $data['factura_nominal'] ?? null;
@@ -150,6 +151,98 @@ class ReporteController extends Controller
             'balance' => round($totalIngresos - $totalGastosCaja - $totalGastosExternos, 2),
             'total_pago_tarjeta_credito' => $totalPagoTarjetaCredito,
         ]);
+    }
+
+    /**
+     * PDF del reporte de gastos externos, con checkboxes de filtro (categoría
+     * y factura nominal, ambos multi-selección). Corrige un problema real del
+     * Excel "COMPRAS DEL MES" del negocio: ahí la columna de pagos a tarjeta
+     * de crédito nunca se sumaba al final — aquí la fila de TOTALES suma las
+     * 4 columnas numéricas sin excepción, y se agrega una caja de "Totales
+     * por categoría" debajo de la tabla.
+     */
+    public function exportarGastosExternosPdf(Request $request)
+    {
+        $this->autorizar($request);
+        $data = $this->validarRango($request, [
+            'categoria' => ['nullable', 'array'],
+            'categoria.*' => [Rule::in(['gasto_operativo', 'pago_tarjeta_credito', 'servicios_publicos'])],
+            'factura_nominal' => ['nullable', 'array'],
+            'factura_nominal.*' => [Rule::in(['con', 'sin'])],
+        ]);
+
+        $categorias = $data['categoria'] ?? [];
+        $facturaNominal = $data['factura_nominal'] ?? [];
+
+        $gastos = Gasto::query()
+            ->where('es_externo', true)
+            ->whereBetween('fecha_emision', [$data['desde'], $data['hasta']])
+            ->when(count($categorias) > 0, fn ($q) => $q->whereIn('categoria', $categorias))
+            // Si ambas opciones (con/sin) están marcadas, o ninguna, no filtra.
+            ->when(count($facturaNominal) === 1, function ($q) use ($facturaNominal) {
+                if ($facturaNominal[0] === 'con') {
+                    $q->whereHas('proveedor', fn ($p) => $p->where('factura_nominal', true));
+                } else {
+                    $q->where(fn ($sub) => $sub->whereNull('proveedor_id')
+                        ->orWhereHas('proveedor', fn ($p) => $p->where('factura_nominal', false)));
+                }
+            })
+            ->with('proveedor')
+            ->orderBy('fecha_emision')
+            ->orderBy('id')
+            ->get();
+
+        $etiquetasCategoria = [
+            'gasto_operativo' => 'Gasto operativo',
+            'pago_tarjeta_credito' => 'Pago de tarjeta de crédito',
+            'servicios_publicos' => 'Servicios públicos / Gastos fijos',
+        ];
+
+        $filas = $gastos->map(function (Gasto $gasto) use ($etiquetasCategoria) {
+            $valor = (float) $gasto->valor;
+            $efectivo = $gasto->tipo_pago === 'efectivo' ? $valor : 0.0;
+            $tarjeta = $gasto->tipo_pago === 'tarjeta' ? $valor : 0.0;
+            // Los cheques son, igual que las transferencias, pagos bancarios
+            // (no efectivo/tarjeta) — el formato aprobado no tiene columna
+            // propia para cheque, así que cae aquí junto a transferencia.
+            $transferencia = in_array($gasto->tipo_pago, ['transferencia', 'cheque'], true) ? $valor : 0.0;
+
+            return [
+                'fecha' => $gasto->fecha_emision?->format('d/m/Y'),
+                'proveedor' => $gasto->nombreProveedor(),
+                'numero_factura' => $gasto->numero_factura ?: ($gasto->factura_pendiente ? 'Pendiente' : 'N/A'),
+                'categoria' => $etiquetasCategoria[$gasto->categoria] ?? $gasto->categoria,
+                'efectivo' => $efectivo,
+                'tarjeta' => $tarjeta,
+                'transferencia' => $transferencia,
+                'total' => $valor,
+            ];
+        });
+
+        $totales = [
+            'efectivo' => round((float) $filas->sum('efectivo'), 2),
+            'tarjeta' => round((float) $filas->sum('tarjeta'), 2),
+            'transferencia' => round((float) $filas->sum('transferencia'), 2),
+            'total' => round((float) $filas->sum('total'), 2),
+        ];
+
+        $totalesPorCategoria = [
+            'gasto_operativo' => round((float) $gastos->where('categoria', 'gasto_operativo')->sum('valor'), 2),
+            'servicios_publicos' => round((float) $gastos->where('categoria', 'servicios_publicos')->sum('valor'), 2),
+            'pago_tarjeta_credito' => round((float) $gastos->where('categoria', 'pago_tarjeta_credito')->sum('valor'), 2),
+        ];
+        $totalGeneral = round(array_sum($totalesPorCategoria), 2);
+
+        $pdf = Pdf::loadView('pdf.reporte-gastos-externos', [
+            'negocio' => 'Inversiones PG Store S. de R.L.',
+            'periodo' => \Carbon\Carbon::parse($data['desde'])->format('d/m/Y').' — '.\Carbon\Carbon::parse($data['hasta'])->format('d/m/Y'),
+            'filas' => $filas,
+            'totales' => $totales,
+            'totalesPorCategoria' => $totalesPorCategoria,
+            'totalGeneral' => $totalGeneral,
+        ])->setPaper('letter', 'landscape');
+
+        return $pdf->download("reporte-gastos-externos-{$data['desde']}-a-{$data['hasta']}.pdf");
     }
 
     /** Total de vales por empleado en el período (fecha del cierre al que pertenecen). */

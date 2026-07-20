@@ -22,6 +22,7 @@ class Gasto extends Model
         'valor',
         'es_externo',
         'categoria',
+        'comprobante_path',
         'agregado_por',
     ];
 
@@ -31,6 +32,13 @@ class Gasto extends Model
         'es_externo' => 'boolean',
         'valor' => 'decimal:2',
     ];
+
+    protected $appends = ['comprobante_url'];
+
+    public function getComprobanteUrlAttribute(): ?string
+    {
+        return $this->comprobante_path ? asset('storage/' . $this->comprobante_path) : null;
+    }
 
     public function cierreCaja(): BelongsTo
     {

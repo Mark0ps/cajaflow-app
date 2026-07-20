@@ -145,6 +145,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('reportes/periodo', [ReporteController::class, 'periodo']);
     Route::get('reportes/metodo-pago', [ReporteController::class, 'metodoPago']);
     Route::get('reportes/gastos-vs-ingresos', [ReporteController::class, 'gastosVsIngresos']);
+    Route::get('reportes/gastos-externos/pdf', [ReporteController::class, 'exportarGastosExternosPdf']);
     Route::get('reportes/vales-por-empleado', [ReporteController::class, 'valesPorEmpleado']);
 
     // Estado de cuenta y pagos (el flujo de "pagos atrasados")

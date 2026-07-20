@@ -11,6 +11,7 @@ use App\Models\CierreCaja;
 use App\Models\Gasto;
 use App\Services\CierreCajaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class GastoController extends Controller
@@ -115,7 +116,7 @@ class GastoController extends Controller
     /** Gasto externo del negocio (Secretaria/Admin), sin cierre asociado. */
     public function storeExterno(GastoExternoRequest $request)
     {
-        $data = $request->validated();
+        $data = $request->safe()->except('comprobante');
 
         $gastoData = Gasto::normalizarFacturaPorProveedor([
             ...$data,
@@ -123,6 +124,9 @@ class GastoController extends Controller
             'es_externo' => true,
             'factura_pendiente' => empty($data['numero_factura']),
             'categoria' => $data['categoria'] ?? 'gasto_operativo',
+            'comprobante_path' => $request->hasFile('comprobante')
+                ? $request->file('comprobante')->store('comprobantes-gastos', 'public')
+                : null,
             'agregado_por' => $request->user()->id,
         ], $data['proveedor_id'] ?? null);
 
@@ -140,8 +144,23 @@ class GastoController extends Controller
             ]);
         }
 
-        $data = $request->validated();
+        $data = $request->safe()->except('comprobante');
         $proveedorId = array_key_exists('proveedor_id', $data) ? $data['proveedor_id'] : $gasto->proveedor_id;
+
+        if ($request->hasFile('comprobante')) {
+            if ($gasto->comprobante_path) {
+                Storage::disk('public')->delete($gasto->comprobante_path);
+            }
+            $data['comprobante_path'] = $request->file('comprobante')->store('comprobantes-gastos', 'public');
+        }
+
+        // A diferencia de storeExterno(), aquí numero_factura puede cambiar
+        // sin pasar por "completar factura" (que sí lo hace) — hay que
+        // recalcular factura_pendiente o el badge se queda pegado en
+        // "pendiente" aunque el número ya se haya guardado bien.
+        if (array_key_exists('numero_factura', $data)) {
+            $data['factura_pendiente'] = empty($data['numero_factura']);
+        }
 
         $gasto->update(Gasto::normalizarFacturaPorProveedor($data, $proveedorId));
 
@@ -157,6 +176,10 @@ class GastoController extends Controller
             throw ValidationException::withMessages([
                 'gasto' => 'Este gasto no es un gasto externo.',
             ]);
+        }
+
+        if ($gasto->comprobante_path) {
+            Storage::disk('public')->delete($gasto->comprobante_path);
         }
 
         $gasto->delete();

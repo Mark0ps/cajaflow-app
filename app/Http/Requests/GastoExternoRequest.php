@@ -22,7 +22,10 @@ class GastoExternoRequest extends FormRequest
             'numero_factura' => ['nullable', 'string', 'max:100'],
             'tipo_pago' => ['required', Rule::in(['efectivo', 'tarjeta', 'transferencia', 'cheque'])],
             'valor' => ['required', 'numeric', 'min:0.01'],
-            'categoria' => ['nullable', Rule::in(['gasto_operativo', 'pago_tarjeta_credito'])],
+            'categoria' => ['nullable', Rule::in(['gasto_operativo', 'pago_tarjeta_credito', 'servicios_publicos'])],
+
+            // Foto/escaneo del comprobante (factura, recibo)
+            'comprobante' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:8192'],
         ];
     }
 }
